@@ -10,10 +10,22 @@ export const API = `${CLEAN_BASE_URL}/api`;
 
 const api = axios.create({ baseURL: API });
 
+
 // ==========================================
-// GLOBAL LOADER LOGIC
+// GLOBAL LOADER LOGIC WITH SILENT ROUTES
 // ==========================================
 let activeRequests = 0;
+
+// Tell Axios to ignore these specific background polling routes
+const SILENT_URLS = [
+  "/worker/invites",
+  "/worker/applications"
+];
+
+const isSilent = (url) => {
+  if (!url) return false;
+  return SILENT_URLS.some(silentRoute => url.includes(silentRoute));
+};
 
 const showLoader = () => {
   if (activeRequests === 0) {
@@ -21,13 +33,11 @@ const showLoader = () => {
     if (!loader) {
       loader = document.createElement("div");
       loader.id = "global-api-loader";
-      // Full screen overlay that blocks clicks to "pause" the app
       loader.style.cssText = `
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
         background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(2px);
         z-index: 99999; display: flex; justify-content: center; align-items: center;
       `;
-      // Orange spinner animation
       loader.innerHTML = `
         <style>
           @keyframes rm-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -48,7 +58,6 @@ const showLoader = () => {
 };
 
 const hideLoader = () => {
-  // Decrease count, ensure it never goes below 0
   activeRequests = Math.max(0, activeRequests - 1); 
   if (activeRequests === 0) {
     const loader = document.getElementById("global-api-loader");
@@ -58,27 +67,39 @@ const hideLoader = () => {
 // ==========================================
 
 
-// Intercept Requests (Turn Loader ON)
+// Intercept Requests
 api.interceptors.request.use((config) => {
-  showLoader(); 
+  // 1. Tag the request if it belongs to our silent list
+  config.meta = config.meta || {};
+  config.meta.silent = isSilent(config.url);
+
+  // 2. Only show the loader if it is NOT a silent background route
+  if (!config.meta.silent) {
+    showLoader(); 
+  }
   
   const t = localStorage.getItem("rm_token");
   if (t) config.headers.Authorization = `Bearer ${t}`;
   return config;
 }, (error) => {
-  hideLoader(); // Hide if the request fails before leaving the app
+  hideLoader(); 
   return Promise.reject(error);
 });
 
 
-// Intercept Responses (Turn Loader OFF)
+// Intercept Responses
 api.interceptors.response.use(
   (r) => {
-    hideLoader(); 
+    // Only hide the loader if we actually showed it for this request
+    if (!r.config?.meta?.silent) {
+      hideLoader(); 
+    }
     return r;
   },
   (err) => {
-    hideLoader(); // Ensure loader hides even if the API throws an error
+    if (!err.config?.meta?.silent) {
+      hideLoader();
+    }
     
     if (err?.response?.status === 401) {
       localStorage.removeItem("rm_token");
