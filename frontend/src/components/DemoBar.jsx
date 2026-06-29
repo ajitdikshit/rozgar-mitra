@@ -9,6 +9,11 @@ const ACCOUNTS = [
   { username: "sunita",  label: "Sunita (Employer)",    role: "employer" },
   { username: "vikram",  label: "Vikram (Employer)",    role: "employer" },
   { username: "nandini", label: "Nandini (Employer)",   role: "employer" },
+  { username: "raju", label: "Raju (Plumber)",   role: "worker" },
+  { username: "suresh", label: "Suresh (Electrician)",   role: "worker" },
+  { username: "ramesh", label: "ramesh (Employer)",   role: "employer" },
+  { username: "priya", label: "Priya (Employer)",   role: "employer" }
+  
 ];
 
 export default function DemoBar() {
