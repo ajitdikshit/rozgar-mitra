@@ -4,24 +4,29 @@ import { useLang } from "../context/LangContext";
 import Navbar from "../components/Navbar";
 import BottomNav from "../components/BottomNav";
 import WorkerDrawer from "../components/WorkerDrawer";
+import Modal from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { TrustedBadge } from "../components/PassportCard";
 import { StarDisplay } from "../components/Stars";
-import { MapPin, Calendar, IndianRupee, Users, Check, UserCircle } from "lucide-react";
-import Modal from "../components/Modal";
-import EmployerProfilePanel from "../components/EmployerProfilePanel";
+import { MapPin, IndianRupee, Users, Check, BadgeCheck, Star, Briefcase } from "lucide-react";
+import { toast } from "sonner";
 
-const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician"];
+const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician", "Welder", "Gardener", "Cook", "Security Guard", "Cleaner / Sweeper", "Tailor", "Beautician", "Delivery Boy", "Caretaker / Nurse", "Tutor / Teacher", "Mechanic", "Tiler", "Waterproofing Expert", "Glass / Aluminium Worker", "Lift Technician", "CCTV Technician", "Solar Panel Technician"];
 
 export default function Jobs() {
   const { t } = useLang();
   const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [skill, setSkill] = useState(user?.skill || "");
+
+  // Reset skill filter when user account switches
+  useEffect(() => {
+    setSkill(user?.skill || "");
+  }, [user?.username]);
   const [q, setQ] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [badges, setBadges] = useState({ active: 0, pending: 0, invites: 0 });
-  const [employerProfile, setEmployerProfile] = useState(null);
+  const [empModal, setEmpModal] = useState(null); // employer trust info
 
   const load = async () => {
     const params = {};
@@ -31,18 +36,17 @@ export default function Jobs() {
     setJobs(data);
   };
 
-  // FIX #8: Poll badge counts on an interval so they update without a page reload
   const loadBadges = useCallback(async () => {
     try {
       const [appsRes, invitesRes] = await Promise.all([
         api.get("/worker/applications"),
         api.get("/worker/invites"),
       ]);
-      const pending = appsRes.data.filter(a => a.status === "pending" || a.status === "offer_pending").length;
+      const pending = appsRes.data.filter(a => a.status === "pending").length;
       const active = appsRes.data.filter(a => a.status === "hired").length;
       const invites = invitesRes.data.filter(i => i.status === "pending").length;
       setBadges({ pending, active, invites });
-    } catch { /* silent — badges are non-critical */ }
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => { load(); }, [skill, q]);
@@ -54,14 +58,13 @@ export default function Jobs() {
   }, [loadBadges]);
 
   const apply = async (id) => {
-    await api.post("/worker/apply", { job_id: id });
-    load();
-    loadBadges();
-  };
-
-  const viewEmployer = async (employerId) => {
-    const { data } = await api.get(`/worker/employer/${employerId}/profile`);
-    setEmployerProfile(data);
+    try {
+      await api.post("/worker/apply", { job_id: id });
+      load();
+      loadBadges();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not apply");
+    }
   };
 
   return (
@@ -73,11 +76,14 @@ export default function Jobs() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={t.searchPlaceholder}
                data-testid="job-search"
                className="w-full px-4 py-3 border-2 border-[#E2E8F0] rounded-xl bg-white outline-none focus:border-[#E65C00]"/>
-        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-          <Chip active={!skill} onClick={() => setSkill("")} tid="filter-all">{t.allSkills}</Chip>
-          {SKILLS.map(s => (
-            <Chip key={s} active={skill === s} onClick={() => setSkill(s)} tid={`filter-${s}`}>{s}</Chip>
-          ))}
+        <div className="relative">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <Chip active={!skill} onClick={() => setSkill("")} tid="filter-all">{t.allSkills}</Chip>
+            {SKILLS.map(s => (
+              <Chip key={s} active={skill === s} onClick={() => setSkill(s)} tid={`filter-${s}`}>{s}</Chip>
+            ))}
+          </div>
+          <div className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-[#FDFBF7] to-transparent"/>
         </div>
       </div>
 
@@ -100,14 +106,17 @@ export default function Jobs() {
                 </div>
               </div>
               <p className="text-sm mt-2 text-[#4A5568] line-clamp-2">{j.description}</p>
-              <div className="flex items-center justify-between mt-3 text-xs">
-                <button onClick={() => viewEmployer(j.employer_id)} data-testid={`emp-profile-${j.id}`}
-                        className="text-left text-[#E65C00] font-bold flex items-center gap-1">
-                  <UserCircle size={14}/>{t.viewEmployer}
-                </button>
-                {j.employer_avg_rating > 0 && <StarDisplay stars={j.employer_avg_rating}/>}
-              </div>
-              <p className="text-xs text-[#4A5568] mt-1">{j.employer_company || j.employer_name}</p>
+
+              {/* Employer info row — tappable to see trust details */}
+              <button onClick={() => setEmpModal(j)} data-testid={`emp-info-${j.id}`}
+                      className="w-full mt-3 flex items-center justify-between bg-[#FDFBF7] border border-[#E2E8F0] rounded-xl px-3 py-2 active:bg-gray-100">
+                <span className="text-xs text-[#4A5568]">{t.employerProfile}: <b>{j.employer_company || j.employer_name}</b></span>
+                <div className="flex items-center gap-1">
+                  {j.employer_avg_rating > 0 && <StarDisplay stars={j.employer_avg_rating}/>}
+                  <span className="text-[10px] text-[#E65C00] font-bold ml-1">View Employer ›</span>
+                </div>
+              </button>
+
               {j.workers_needed > 1 && (
                 <div className="mt-3">
                   <div className="flex justify-between text-[11px] mb-1">
@@ -119,18 +128,60 @@ export default function Jobs() {
                   </div>
                 </div>
               )}
-              <button onClick={() => apply(j.id)} disabled={j.applied || left === 0}
-                      data-testid={`apply-${j.id}`}
-                      className={`w-full mt-3 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 ${j.applied ? "bg-green-100 text-green-700" : left === 0 ? "bg-gray-100 text-gray-400" : "bg-[#E65C00] text-white active:scale-95 transition-transform"}`}>
-                {j.applied ? <><Check size={18}/>{t.applied}</> : t.applyNow}
-              </button>
+              {(() => {
+                const wrongSkill = user?.skill && j.skill !== user.skill && !j.applied;
+                return (
+                  <button onClick={() => !wrongSkill && apply(j.id)}
+                          disabled={j.applied || left === 0 || wrongSkill}
+                          data-testid={`apply-${j.id}`}
+                          title={wrongSkill ? `This job requires a ${j.skill}` : ""}
+                          className={`w-full mt-3 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2
+                            ${j.applied ? "bg-green-100 text-green-700"
+                              : left === 0 ? "bg-gray-100 text-gray-400"
+                              : wrongSkill ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              : "bg-[#E65C00] text-white active:scale-95 transition-transform"}`}>
+                    {j.applied
+                      ? <><Check size={18}/>{t.applied}</>
+                      : wrongSkill
+                      ? `Requires ${j.skill}`
+                      : t.applyNow}
+                  </button>
+                );
+              })()}
             </div>
           );
         })}
       </div>
 
-      <Modal open={!!employerProfile} onClose={() => setEmployerProfile(null)} title={t.employerProfile}>
-        <EmployerProfilePanel data={employerProfile}/>
+      {/* Employer Trust Modal */}
+      <Modal open={!!empModal} onClose={() => setEmpModal(null)} title="Employer Info">
+        {empModal && (
+          <div className="space-y-3">
+            <div className="bg-[#1A202C] text-white rounded-2xl p-4">
+              <p className="font-extrabold text-lg font-display">{empModal.employer_company || empModal.employer_name}</p>
+              <p className="text-xs text-gray-300">{empModal.city}, {empModal.area}</p>
+              <div className="flex items-center gap-2 mt-2">
+                {empModal.employer_trusted && (
+                  <span className="inline-flex items-center gap-1 bg-[#0EA5E9]/20 text-[#0EA5E9] px-2 py-1 rounded-full text-xs font-bold">
+                    <BadgeCheck size={13}/> Trusted Employer
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <InfoStat icon={<Star size={16} className="text-[#EAB308]"/>} label="Avg Rating" value={empModal.employer_avg_rating > 0 ? `${empModal.employer_avg_rating} / 5` : "No ratings yet"}/>
+              <InfoStat icon={<Briefcase size={16} className="text-[#E65C00]"/>} label="This Job" value={`₹${empModal.budget}`}/>
+            </div>
+            <div className="bg-[#FDFBF7] border border-[#E2E8F0] rounded-xl p-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#4A5568] mb-1">Job Description</p>
+              <p className="text-sm">{empModal.description}</p>
+            </div>
+            <div className="bg-[#FDFBF7] border border-[#E2E8F0] rounded-xl p-3 text-sm">
+              <p><span className="font-bold">Address:</span> {empModal.address}</p>
+              {empModal.deadline && <p className="mt-1"><span className="font-bold">Deadline:</span> {empModal.deadline}</p>}
+            </div>
+          </div>
+        )}
       </Modal>
 
       <BottomNav role="worker" badges={badges}/>
@@ -144,5 +195,17 @@ function Chip({ children, active, onClick, tid }) {
             className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2 ${active ? "bg-[#1A202C] text-white border-[#1A202C]" : "bg-white border-[#E2E8F0] text-[#4A5568]"}`}>
       {children}
     </button>
+  );
+}
+
+function InfoStat({ icon, label, value }) {
+  return (
+    <div className="bg-[#FDFBF7] border border-[#E2E8F0] rounded-xl p-3 flex items-center gap-2">
+      {icon}
+      <div>
+        <p className="text-[10px] text-[#4A5568] font-bold uppercase">{label}</p>
+        <p className="font-bold text-sm">{value}</p>
+      </div>
+    </div>
   );
 }

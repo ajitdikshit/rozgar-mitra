@@ -5,9 +5,8 @@ import BottomNav from "../components/BottomNav";
 import EmployerDrawer from "../components/EmployerDrawer";
 import Modal from "../components/Modal";
 import PassportCard from "../components/PassportCard";
-import WorkerHistoryPanel from "../components/WorkerHistoryPanel";
 import { useLang } from "../context/LangContext";
-import { ChevronDown, ChevronUp, Check, X, ShieldCheck, BadgeCheck, UserCircle, Clock, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, X, ShieldCheck, BadgeCheck, FileUser } from "lucide-react";
 
 const STATUS_COLOR = {
   open: "bg-blue-100 text-blue-700",
@@ -20,15 +19,27 @@ export default function PostedJobs() {
   const [jobs, setJobs] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [drawer, setDrawer] = useState(false);
-  const [workerProfile, setWorkerProfile] = useState(null);
+  const [passport, setPassport] = useState(null);
+  const [loadingPassport, setLoadingPassport] = useState(false);
+
   const load = () => api.get("/employer/jobs").then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
-  const decide = async (id, action) => { await api.post(`/employer/applicants/${id}/decide?action=${action}`); load(); };
-  const removeApplicant = async (id) => { await api.delete(`/employer/applicants/${id}`); load(); };
 
-  const viewWorkerProfile = async (workerId) => {
-    const { data } = await api.get(`/employer/worker/${workerId}/passport`);
-    setWorkerProfile(data);
+  const decide = async (id, action) => {
+    await api.post(`/employer/applicants/${id}/decide?action=${action}`);
+    load();
+  };
+
+  const viewPassport = async (worker_id) => {
+    setLoadingPassport(true);
+    try {
+      const { data } = await api.get(`/employer/worker/${worker_id}/passport`);
+      setPassport(data);
+    } catch (e) {
+      // worker not yet hired — passport still loads with phone hidden
+    } finally {
+      setLoadingPassport(false);
+    }
   };
 
   return (
@@ -39,9 +50,7 @@ export default function PostedJobs() {
         {jobs.length === 0 && <p className="text-center text-[#4A5568] py-10">No jobs posted yet.</p>}
         {jobs.map(j => {
           const isOpen = expanded === j.id;
-          const applicants = j.applicants.filter(a => a.status === "pending");
-          const awaiting = j.applicants.filter(a => a.status === "offer_pending");
-          const declined = j.applicants.filter(a => a.status === "rejected_by_worker");
+          const pending = j.applicants.filter(a => a.status === "pending");
           const hired = j.applicants.filter(a => a.status === "hired" || a.status === "completed");
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl overflow-hidden" data-testid={`pj-${j.id}`}>
@@ -60,40 +69,23 @@ export default function PostedJobs() {
                 <div className="border-t border-[#E2E8F0] p-4 space-y-3 bg-[#FDFBF7]">
                   {hired.length > 0 && (
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-green-700 mb-1">{t.active}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-green-700 mb-1">{t.hired}</p>
                       {hired.map(a => (
-                        <ApplicantCard key={a.id} a={a} hideActions onViewProfile={() => viewWorkerProfile(a.worker_id)}/>
-                      ))}
-                    </div>
-                  )}
-                  {awaiting.length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-[#EAB308] mb-1">{t.awaitingWorker}</p>
-                      {awaiting.map(a => (
-                        <ApplicantCard key={a.id} a={a} hideActions awaiting onViewProfile={() => viewWorkerProfile(a.worker_id)}/>
-                      ))}
-                    </div>
-                  )}
-                  {declined.length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-red-600 mb-1">{t.rejectedByWorker}</p>
-                      {declined.map(a => (
-                        <ApplicantCard key={a.id} a={a} hideActions rejected
-                                       onViewProfile={() => viewWorkerProfile(a.worker_id)}
-                                       onRemove={() => removeApplicant(a.id)}/>
+                        <ApplicantCard key={a.id} a={a} hideActions
+                                       onViewPassport={() => viewPassport(a.worker_id)}/>
                       ))}
                     </div>
                   )}
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#4A5568] mb-1">{t.applicants}</p>
-                    {applicants.length === 0 ? (
+                    {pending.length === 0 ? (
                       <p className="text-sm text-[#4A5568] py-2">{t.noApplicants}</p>
                     ) : (
-                      applicants.map(a => (
+                      pending.map(a => (
                         <ApplicantCard key={a.id} a={a}
                                        onHire={() => decide(a.id, "hire")}
                                        onPass={() => decide(a.id, "pass")}
-                                       onViewProfile={() => viewWorkerProfile(a.worker_id)}/>
+                                       onViewPassport={() => viewPassport(a.worker_id)}/>
                       ))
                     )}
                   </div>
@@ -104,9 +96,8 @@ export default function PostedJobs() {
         })}
       </div>
 
-      <Modal open={!!workerProfile} onClose={() => setWorkerProfile(null)} title={t.viewProfile}>
-        <PassportCard data={workerProfile} showShare={false}/>
-        <WorkerHistoryPanel history={workerProfile?.history} reviews={workerProfile?.reviews}/>
+      <Modal open={!!passport} onClose={() => setPassport(null)} title="Worker Passport">
+        <PassportCard data={passport} showShare={false}/>
       </Modal>
 
       <BottomNav role="employer"/>
@@ -114,52 +105,40 @@ export default function PostedJobs() {
   );
 }
 
-function ApplicantCard({ a, onHire, onPass, hideActions, onViewProfile, awaiting, rejected, onRemove }) {
-  const { t } = useLang();
+function ApplicantCard({ a, onHire, onPass, onViewPassport, hideActions }) {
   return (
     <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 mb-2" data-testid={`applicant-${a.id}`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
           <p className="font-bold flex items-center gap-1">{a.worker_name}
             {a.aadhaar_verified && <ShieldCheck size={14} className="text-[#0EA5E9]"/>}
             {a.skill_test_passed && <BadgeCheck size={14} className="text-[#16A34A]" data-testid={`skill-${a.id}`}/>}
           </p>
           <p className="text-xs text-[#4A5568]">{a.worker_skill} • {a.worker_city}</p>
           <p className="text-xs mt-1">⭐ Score {a.reliability_score} • {a.verified_jobs} verified jobs</p>
-          <button onClick={onViewProfile} data-testid={`profile-${a.id}`}
-                  className="mt-2 text-xs font-bold text-[#E65C00] flex items-center gap-1">
-            <UserCircle size={13}/>{t.viewProfile}
+        </div>
+        <div className="flex items-center gap-1 ml-2">
+          <button onClick={onViewPassport} data-testid={`passport-${a.id}`}
+                  className="w-9 h-9 rounded-full bg-[#E65C00]/10 text-[#E65C00] flex items-center justify-center active:scale-95"
+                  title="View Passport">
+            <FileUser size={16}/>
           </button>
-          {awaiting && (
-            <p className="mt-2 text-xs text-[#EAB308] font-bold flex items-center gap-1">
-              <Clock size={12} className="pulse-dot"/>{t.waitingForWorker}
-            </p>
+          {!hideActions && (
+            <>
+              <button onClick={onPass} data-testid={`pass-${a.id}`}
+                      className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:scale-95">
+                <X size={18}/>
+              </button>
+              <button onClick={onHire} data-testid={`hire-${a.id}`}
+                      className="w-9 h-9 rounded-full bg-[#16A34A] text-white flex items-center justify-center active:scale-95">
+                <Check size={18}/>
+              </button>
+            </>
           )}
-          {rejected && (
-            <p className="mt-2 text-xs text-red-600 font-bold">{t.rejectedByWorker}</p>
+          {hideActions && a.worker_phone && (
+            <a href={`tel:${a.worker_phone}`} className="text-sm font-bold text-[#16A34A]">{a.worker_phone}</a>
           )}
         </div>
-        {!hideActions && (
-          <div className="flex gap-1 shrink-0">
-            <button onClick={onPass} data-testid={`pass-${a.id}`}
-                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:scale-95">
-              <X size={18}/>
-            </button>
-            <button onClick={onHire} data-testid={`hire-${a.id}`}
-                    className="w-10 h-10 rounded-full bg-[#16A34A] text-white flex items-center justify-center active:scale-95">
-              <Check size={18}/>
-            </button>
-          </div>
-        )}
-        {rejected && onRemove && (
-          <button onClick={onRemove} data-testid={`remove-${a.id}`}
-                  className="shrink-0 px-3 py-2 rounded-lg bg-red-50 text-red-600 font-bold text-xs flex items-center gap-1">
-            <Trash2 size={14}/>{t.remove}
-          </button>
-        )}
-        {hideActions && !rejected && a.worker_phone && (
-          <a href={`tel:${a.worker_phone}`} className="text-sm font-bold text-[#16A34A] shrink-0">{a.worker_phone}</a>
-        )}
       </div>
     </div>
   );

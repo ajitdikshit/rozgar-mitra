@@ -4,11 +4,9 @@ import Navbar from "../components/Navbar";
 import BottomNav from "../components/BottomNav";
 import EmployerDrawer from "../components/EmployerDrawer";
 import Modal from "../components/Modal";
-import PassportCard from "../components/PassportCard";
-import WorkerHistoryPanel from "../components/WorkerHistoryPanel";
 import { useLang } from "../context/LangContext";
 import { StarPicker, StarDisplay } from "../components/Stars";
-import { Phone, CheckCircle2, Hourglass, Star, History } from "lucide-react";
+import { Phone, CheckCircle2, Hourglass, Star } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ActiveJobs() {
@@ -18,12 +16,15 @@ export default function ActiveJobs() {
   const [review, setReview] = useState(null);
   const [stars, setStars] = useState(5);
   const [text, setText] = useState("");
-  const [workerProfile, setWorkerProfile] = useState(null);
 
   const load = () => api.get("/employer/active").then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
-  const approve = async (job_id, worker_id) => {
+  const approve = async (job_id, worker_id, canApprove) => {
+    if (!canApprove) {
+      toast.error("Worker has not marked the job complete yet.");
+      return;
+    }
     try {
       await api.post("/employer/approve-worker", { job_id, worker_id });
       toast.success("Job approved & marked complete");
@@ -50,11 +51,6 @@ export default function ActiveJobs() {
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not save review");
     }
-  };
-
-  const viewWorkerHistory = async (workerId) => {
-    const { data } = await api.get(`/employer/worker/${workerId}/passport`);
-    setWorkerProfile(data);
   };
 
   return (
@@ -99,16 +95,12 @@ export default function ActiveJobs() {
                             <span className="text-[10px] text-[#4A5568]">your review</span>
                           </div>
                         )}
-                        <button onClick={() => viewWorkerHistory(w.worker_id)} data-testid={`history-${w.worker_id}`}
-                                className="mt-2 text-xs font-bold text-[#E65C00] flex items-center gap-1">
-                          <History size={13}/>{t.viewProfile}
-                        </button>
                       </div>
                       <a href={`tel:${w.phone}`} data-testid={`call-w-${w.worker_id}`}
                          className="text-sm font-bold text-[#16A34A] flex items-center gap-1 shrink-0"><Phone size={14}/>{w.phone}</a>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-3">
-                      <button onClick={() => approve(j.id, w.worker_id)} disabled={!canApprove}
+                      <button onClick={() => approve(j.id, w.worker_id, canApprove)}
                               data-testid={`approve-${w.worker_id}`}
                               className={`py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 ${canApprove ? "bg-[#16A34A] text-white active:scale-95" : isCompleted ? "bg-green-50 text-green-700 border-2 border-green-300" : "bg-gray-100 text-gray-400"}`}>
                         <CheckCircle2 size={14}/>{isCompleted ? "Approved" : "Approve & Complete"}
@@ -136,12 +128,6 @@ export default function ActiveJobs() {
           {t.submit}
         </button>
       </Modal>
-
-      <Modal open={!!workerProfile} onClose={() => setWorkerProfile(null)} title={t.viewProfile}>
-        <PassportCard data={workerProfile} showShare={false}/>
-        <WorkerHistoryPanel history={workerProfile?.history} reviews={workerProfile?.reviews}/>
-      </Modal>
-
       <BottomNav role="employer"/>
     </div>
   );

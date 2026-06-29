@@ -5,11 +5,11 @@ import BottomNav from "../components/BottomNav";
 import EmployerDrawer from "../components/EmployerDrawer";
 import Modal from "../components/Modal";
 import PassportCard from "../components/PassportCard";
-import WorkerHistoryPanel from "../components/WorkerHistoryPanel";
 import { useLang } from "../context/LangContext";
-import { Zap, ShieldCheck, BadgeCheck } from "lucide-react";
+import { ShieldCheck, BadgeCheck } from "lucide-react";
+import { toast } from "sonner";
 
-const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician"];
+const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician", "Welder", "Gardener", "Cook", "Security Guard", "Cleaner / Sweeper", "Tailor", "Beautician", "Delivery Boy", "Caretaker / Nurse", "Tutor / Teacher", "Mechanic", "Tiler", "Waterproofing Expert", "Glass / Aluminium Worker", "Lift Technician", "CCTV Technician", "Solar Panel Technician"];
 
 export default function BrowseWorkers() {
   const { t } = useLang();
@@ -35,15 +35,21 @@ export default function BrowseWorkers() {
     setPassport(data);
   };
 
-  const openInvite = async (worker_id) => {
+  const openInvite = async (worker_id, worker_skill) => {
     const { data } = await api.get("/employer/jobs");
-    setJobs(data.filter(j => j.status === "open"));
-    setInviting({ worker_id });
+    // Only show jobs that match the worker's skill
+    setJobs(data.filter(j => j.status === "open" && j.skill === worker_skill));
+    setInviting({ worker_id, worker_skill });
   };
   const sendInvite = async (job_id) => {
-    await api.post("/employer/invite", { worker_id: inviting.worker_id, job_id });
-    setInviting(false);
-    setPassport(null);
+    try {
+      await api.post("/employer/invite", { worker_id: inviting.worker_id, job_id });
+      toast.success("Invite sent successfully!");
+      setInviting(false);
+      setPassport(null);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not send invite");
+    }
   };
 
   return (
@@ -54,9 +60,12 @@ export default function BrowseWorkers() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={t.searchPlaceholder}
                data-testid="worker-search"
                className="w-full px-4 py-3 border-2 border-[#E2E8F0] rounded-xl bg-white"/>
-        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-          <Chip active={!skill} onClick={() => setSkill("")} tid="wfilter-all">{t.allSkills}</Chip>
-          {SKILLS.map(s => <Chip key={s} active={skill === s} onClick={() => setSkill(s)} tid={`wfilter-${s}`}>{s}</Chip>)}
+        <div className="relative">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <Chip active={!skill} onClick={() => setSkill("")} tid="wfilter-all">{t.allSkills}</Chip>
+            {SKILLS.map(s => <Chip key={s} active={skill === s} onClick={() => setSkill(s)} tid={`wfilter-${s}`}>{s}</Chip>)}
+          </div>
+          <div className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-[#FDFBF7] to-transparent"/>
         </div>
       </div>
       <div className="px-4 space-y-3">
@@ -80,8 +89,8 @@ export default function BrowseWorkers() {
               </div>
               <div className="flex flex-col gap-1">
                 <button onClick={() => openPassport(w)} data-testid={`view-${w.id}`}
-                        className="text-xs bg-[#1A202C] text-white px-3 py-1.5 rounded-full font-bold">{t.viewProfile}</button>
-                <button onClick={() => openInvite(w.id)} data-testid={`invite-${w.id}`}
+                        className="text-xs bg-[#1A202C] text-white px-3 py-1.5 rounded-full font-bold">View</button>
+                <button onClick={() => openInvite(w.id, w.skill)} data-testid={`invite-${w.id}`}
                         className="text-xs bg-[#E65C00] text-white px-3 py-1.5 rounded-full font-bold">Invite</button>
               </div>
             </div>
@@ -89,11 +98,10 @@ export default function BrowseWorkers() {
         ))}
       </div>
 
-      <Modal open={!!passport && !inviting} onClose={() => setPassport(null)} title={t.viewProfile}>
+      <Modal open={!!passport && !inviting} onClose={() => setPassport(null)} title={t.yourPassport}>
         <PassportCard data={passport} showShare={false}/>
-        <WorkerHistoryPanel history={passport?.history} reviews={passport?.reviews}/>
         {passport && (
-          <button onClick={() => openInvite(passport.user.id)} data-testid="modal-invite"
+          <button onClick={() => openInvite(passport.user.id, passport.user.skill)} data-testid="modal-invite"
                   className="w-full mt-3 py-3 bg-[#E65C00] text-white font-bold rounded-xl">
             {t.sendInvite}
           </button>
@@ -101,7 +109,11 @@ export default function BrowseWorkers() {
       </Modal>
 
       <Modal open={!!inviting} onClose={() => setInviting(false)} title={t.sendInvite}>
-        {jobs.length === 0 && <p className="text-sm text-[#4A5568]">No open jobs to invite to. Post a job first.</p>}
+        {jobs.length === 0 && (
+          <p className="text-sm text-[#4A5568] py-2">
+            No open jobs requiring <b>{inviting?.worker_skill}</b>. Post a matching job first.
+          </p>
+        )}
         {jobs.map(j => (
           <button key={j.id} onClick={() => sendInvite(j.id)} data-testid={`invite-job-${j.id}`}
                   className="w-full text-left bg-white border-2 border-[#E2E8F0] rounded-xl p-3 mb-2 active:bg-gray-50">

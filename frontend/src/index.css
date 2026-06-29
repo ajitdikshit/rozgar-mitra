@@ -59,11 +59,18 @@ h1, h2, h3, h4, .font-display { font-family: 'Outfit', sans-serif; }
 
 /* Phone-sized wrapper */
 .app-shell {
+  width: 100%;
   max-width: 28rem;
   margin: 0 auto;
   min-height: 100vh;
   background: var(--bg);
   position: relative;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    max-width: 100%;
+  }
 }
 
 @keyframes pulse-dot {

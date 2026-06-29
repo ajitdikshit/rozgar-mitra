@@ -12,7 +12,10 @@ export default function WorkerDrawer({ open, onClose }) {
   const { t } = useLang();
   const [available, setAvailable] = useState(user?.available ?? true);
   const [score, setScore] = useState(0);
-  const { requestPermission, permission } = useNotifications();
+  const { requestPermission } = useNotifications();
+  const [notifState, setNotifState] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
 
   useEffect(() => {
     if (open) {
@@ -68,13 +71,26 @@ export default function WorkerDrawer({ open, onClose }) {
           <DrawerItem icon={History} label={t.history} onClick={() => go("/w/history")} tid="menu-history"/>
           <DrawerItem icon={Star} label={t.reviews} onClick={() => go("/w/reviews")} tid="menu-reviews"/>
           <DrawerItem icon={User} label={t.yourPassport} onClick={() => go("/w/passport")} tid="menu-passport"/>
-          {permission === "default" && (
-            <DrawerItem icon={Bell} label={t.enableNotifications}
-                        onClick={() => requestPermission()}
-                        tid="menu-notif"/>
-          )}
-          {permission === "denied" && (
-            <p className="px-4 py-2 text-xs text-red-600 font-semibold">{t.notificationsBlocked}</p>
+          {notifState !== "unsupported" && (
+            <button onClick={async () => {
+                      if (notifState === "granted") return;
+                      if (notifState === "denied") {
+                        alert("Notifications are blocked in your browser. Go to browser Settings → Site permissions → Notifications to allow.");
+                        return;
+                      }
+                      const ok = await requestPermission();
+                      setNotifState(ok ? "granted" : "denied");
+                    }}
+                    data-testid="menu-notif"
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl active:bg-gray-100">
+              <Bell size={20} strokeWidth={2.4}
+                    className={notifState === "granted" ? "text-green-500" : notifState === "denied" ? "text-red-400" : ""}/>
+              <span className="font-bold text-base">
+                {notifState === "granted" ? "Notifications Enabled ✓"
+                  : notifState === "denied" ? "Notifications Blocked"
+                  : "Enable Notifications"}
+              </span>
+            </button>
           )}
           <div className="border-t my-3"/>
           <DrawerItem icon={LogOut} label={t.logout} onClick={logout} tid="menu-logout" danger/>
