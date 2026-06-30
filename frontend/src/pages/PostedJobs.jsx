@@ -26,9 +26,23 @@ export default function PostedJobs() {
   useEffect(() => { load(); }, []);
 
   const decide = async (id, action) => {
+  try {
+    // 1. Attempt to hire the worker
     await api.post(`/employer/applicants/${id}/decide?action=${action}`);
+    
+    // 2. If successful, reload the data to update the UI
     load();
-  };
+    
+    // 3. Optional: Show a success message
+    toast.success(action === "hire" ? "Worker hired successfully!" : "Applicant passed.");
+    
+  } catch (error) {
+    // 4. Catch the error and print EXACTLY what the backend is complaining about
+    const errorMsg = error?.response?.data?.detail || "Something went wrong on the server.";
+    console.error("Hire Error:", error);
+    toast.error(errorMsg);
+  }
+};
 
   const viewPassport = async (worker_id) => {
     setLoadingPassport(true);
