@@ -17,7 +17,8 @@ export default function ActiveJobs() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState("");
 
-  const load = () => api.get("/employer/active").then(r => setJobs(r.data));
+  // FIX: Added Cache Buster so active jobs load instantly!
+  const load = () => api.get(`/employer/active?_t=${Date.now()}`).then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
   const approve = async (job_id, worker_id, canApprove) => {
@@ -40,7 +41,6 @@ export default function ActiveJobs() {
     setText(w.review_text || "");
   };
 
-  // FIX #15: Add error handling on submitReview
   const submitReview = async () => {
     try {
       await api.post("/employer/review-worker", {

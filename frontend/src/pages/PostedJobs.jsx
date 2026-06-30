@@ -8,6 +8,7 @@ import PassportCard from "../components/PassportCard";
 import { useLang } from "../context/LangContext";
 import { ChevronDown, ChevronUp, Check, X, ShieldCheck, BadgeCheck, FileUser } from "lucide-react";
 import { toast } from "sonner";
+
 const STATUS_COLOR = {
   open: "bg-blue-100 text-blue-700",
   in_progress: "bg-orange-100 text-orange-700",
@@ -22,28 +23,19 @@ export default function PostedJobs() {
   const [passport, setPassport] = useState(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
-  const load = () => api.get("/employer/jobs").then(r => setJobs(r.data));
+  // FIX 1: The Cache Buster guarantees the UI updates the second you hire someone
+  const load = () => api.get(`/employer/jobs?_t=${Date.now()}`).then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
- const decide = async (id, action) => {
-  console.log(`--- HIRING PROCESS STARTED ---`);
-  console.log(`1. Button clicked! Applicant ID: ${id} | Action: ${action}`);
-  
-  try {
-    console.log(`2. Sending request to backend...`);
-    const response = await api.post(`/employer/applicants/${id}/decide?action=${action}`);
-    
-    console.log(`3. Backend SUCCESS! Response:`, response.data);
-    
-    console.log(`4. Reloading job data...`);
-    load();
-    
-    console.log(`--- HIRING PROCESS FINISHED ---`);
-  } catch (error) {
-    console.error(`❌ BACKEND ERROR:`, error);
-    console.error(`❌ ERROR MESSAGE:`, error?.response?.data?.detail || error.message);
-  }
-};
+  const decide = async (id, action) => {
+    try {
+      await api.post(`/employer/applicants/${id}/decide?action=${action}`);
+      toast.success(action === "hire" ? "Worker Hired!" : "Applicant passed.");
+      load();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Something went wrong.");
+    }
+  };
 
   const viewPassport = async (worker_id) => {
     setLoadingPassport(true);
@@ -51,7 +43,7 @@ export default function PostedJobs() {
       const { data } = await api.get(`/employer/worker/${worker_id}/passport`);
       setPassport(data);
     } catch (e) {
-      // worker not yet hired — passport still loads with phone hidden
+      // worker not yet hired
     } finally {
       setLoadingPassport(false);
     }
@@ -65,8 +57,11 @@ export default function PostedJobs() {
         {jobs.length === 0 && <p className="text-center text-[#4A5568] py-10">No jobs posted yet.</p>}
         {jobs.map(j => {
           const isOpen = expanded === j.id;
-          const pending = j.applicants.filter(a => a.status === "pending");
+          
+          // FIX 2: Safely catch the "offer_pending" ghost status so it doesn't break the app
+          const pending = j.applicants.filter(a => a.status === "pending" || a.status === "offer_pending");
           const hired = j.applicants.filter(a => a.status === "hired" || a.status === "completed");
+          
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl overflow-hidden" data-testid={`pj-${j.id}`}>
               <button onClick={() => setExpanded(isOpen ? null : j.id)} className="w-full p-4 text-left flex items-start gap-2"
@@ -74,7 +69,10 @@ export default function PostedJobs() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold font-display">{j.title}</h3>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_COLOR[j.status] || "bg-gray-100"}`}>{j.status.replace("_"," ")}</span>
+                    {/* FIX 3: Make the UI say "ACTIVE" instead of "in progress" */}
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_COLOR[j.status] || "bg-gray-100"}`}>
+                      {j.status === "in_progress" ? "ACTIVE" : j.status.replace("_"," ")}
+                    </span>
                   </div>
                   <p className="text-xs text-[#4A5568]">{j.skill} • ₹{j.budget} • {j.hired_count}/{j.workers_needed} {t.hired}</p>
                 </div>
