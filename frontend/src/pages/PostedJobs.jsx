@@ -25,22 +25,23 @@ export default function PostedJobs() {
   const load = () => api.get("/employer/jobs").then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
-  const decide = async (id, action) => {
+ const decide = async (id, action) => {
+  console.log(`--- HIRING PROCESS STARTED ---`);
+  console.log(`1. Button clicked! Applicant ID: ${id} | Action: ${action}`);
+  
   try {
-    // 1. Attempt to hire the worker
-    await api.post(`/employer/applicants/${id}/decide?action=${action}`);
+    console.log(`2. Sending request to backend...`);
+    const response = await api.post(`/employer/applicants/${id}/decide?action=${action}`);
     
-    // 2. If successful, reload the data to update the UI
+    console.log(`3. Backend SUCCESS! Response:`, response.data);
+    
+    console.log(`4. Reloading job data...`);
     load();
     
-    // 3. Optional: Show a success message
-    toast.success(action === "hire" ? "Worker hired successfully!" : "Applicant passed.");
-    
+    console.log(`--- HIRING PROCESS FINISHED ---`);
   } catch (error) {
-    // 4. Catch the error and print EXACTLY what the backend is complaining about
-    const errorMsg = error?.response?.data?.detail || "Something went wrong on the server.";
-    console.error("Hire Error:", error);
-    toast.error(errorMsg);
+    console.error(`❌ BACKEND ERROR:`, error);
+    console.error(`❌ ERROR MESSAGE:`, error?.response?.data?.detail || error.message);
   }
 };
 
