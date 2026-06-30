@@ -23,7 +23,7 @@ export default function PostedJobs() {
   const [passport, setPassport] = useState(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
-  // FIX 1: The Cache Buster guarantees the UI updates the second you hire someone
+  // THE FIX: Cache Buster forces live data from MongoDB
   const load = () => api.get(`/employer/jobs?_t=${Date.now()}`).then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
@@ -57,11 +57,8 @@ export default function PostedJobs() {
         {jobs.length === 0 && <p className="text-center text-[#4A5568] py-10">No jobs posted yet.</p>}
         {jobs.map(j => {
           const isOpen = expanded === j.id;
-          
-          // FIX 2: Safely catch the "offer_pending" ghost status so it doesn't break the app
           const pending = j.applicants.filter(a => a.status === "pending" || a.status === "offer_pending");
           const hired = j.applicants.filter(a => a.status === "hired" || a.status === "completed");
-          
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl overflow-hidden" data-testid={`pj-${j.id}`}>
               <button onClick={() => setExpanded(isOpen ? null : j.id)} className="w-full p-4 text-left flex items-start gap-2"
@@ -69,7 +66,7 @@ export default function PostedJobs() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold font-display">{j.title}</h3>
-                    {/* FIX 3: Make the UI say "ACTIVE" instead of "in progress" */}
+                    {/* UI TWEAK: Show "ACTIVE" when backend shifts the job to in_progress */}
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_COLOR[j.status] || "bg-gray-100"}`}>
                       {j.status === "in_progress" ? "ACTIVE" : j.status.replace("_"," ")}
                     </span>

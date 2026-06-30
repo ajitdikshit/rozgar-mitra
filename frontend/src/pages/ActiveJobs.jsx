@@ -17,7 +17,7 @@ export default function ActiveJobs() {
   const [stars, setStars] = useState(5);
   const [text, setText] = useState("");
 
-  // FIX: Added Cache Buster so active jobs load instantly!
+  // THE FIX: Added Cache Buster so active jobs load instantly!
   const load = () => api.get(`/employer/active?_t=${Date.now()}`).then(r => setJobs(r.data));
   useEffect(() => { load(); }, []);
 
