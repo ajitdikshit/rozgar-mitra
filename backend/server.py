@@ -108,18 +108,15 @@ def require_employer(user: dict = Depends(get_current_user)):
 # ----- Models -----
 class RegisterIn(BaseModel):
     username: str
-    # FIX #10: Minimum password length of 6 characters
     password: str = Field(..., min_length=6)
     role: Literal["worker", "employer"]
     name: str
     phone: str
     city: str
     area: Optional[str] = ""
-    # worker
     skill: Optional[str] = None
     experience_years: Optional[int] = 0
     aadhaar_verified: Optional[bool] = False
-    # employer
     company: Optional[str] = None
 
 class LoginIn(BaseModel):
@@ -146,7 +143,6 @@ class InviteIn(BaseModel):
 
 class RateEmployerIn(BaseModel):
     job_id: str
-    # FIX #11: Clamp stars to valid 1-5 range
     stars: int = Field(..., ge=1, le=5)
     tags: List[str] = []
     review: str = ""
@@ -154,7 +150,6 @@ class RateEmployerIn(BaseModel):
 class CompleteWorkerIn(BaseModel):
     job_id: str
     worker_id: str
-    # FIX #11: Clamp stars to valid 1-5 range
     stars: int = Field(..., ge=1, le=5)
     review: str = ""
 
@@ -165,7 +160,6 @@ class ApproveWorkerIn(BaseModel):
 class ReviewWorkerIn(BaseModel):
     job_id: str
     worker_id: str
-    # FIX #11: Clamp stars to valid 1-5 range
     stars: int = Field(..., ge=1, le=5)
     review: str = ""
 
@@ -177,10 +171,39 @@ class UrgentIn(BaseModel):
 
 class PhotoIn(BaseModel):
     job_id: str
-    photo_b64: str  # data URL
+    photo_b64: str
 
 class SkillTestIn(BaseModel):
-    answers: List[int]  # length 5, each 0-3
+    answers: List[int]
+
+# ----- Restored Helpers from server1.py -----
+async def enrich_worker_history(worker_id: str) -> dict:
+    records = await db.work_records.find({"worker_id": worker_id}, {"_id": 0}).sort("date", -1).to_list(50)
+    revs = await db.worker_reviews.find({"worker_id": worker_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    history = []
+    for r in records:
+        emp = await db.users.find_one({"id": r["employer_id"]}, {"_id": 0, "password_hash": 0, "name": 1, "company": 1})
+        history.append({**r,
+                        "employer_name": emp.get("name") if emp else "",
+                        "employer_company": emp.get("company") if emp else ""})
+    reviews = []
+    for rev in revs:
+        emp = await db.users.find_one({"id": rev["employer_id"]}, {"_id": 0, "password_hash": 0, "name": 1})
+        reviews.append({**rev, "employer_name": emp.get("name") if emp else ""})
+    return {"history": history, "reviews": reviews}
+
+async def worker_can_see_employer_phone(worker_id: str, employer_id: str) -> bool:
+    apps = await db.applications.find(
+        {"worker_id": worker_id, "status": "hired"}, {"_id": 0, "job_id": 1}
+    ).to_list(500)
+    for a in apps:
+        job = await db.jobs.find_one({"id": a["job_id"], "employer_id": employer_id}, {"_id": 0, "id": 1})
+        if job:
+            return True
+    inv = await db.invites.find_one(
+        {"worker_id": worker_id, "employer_id": employer_id, "status": "accepted"}, {"_id": 0, "id": 1}
+    )
+    return inv is not None
 
 # ----- Worker passport calc -----
 async def compute_passport(worker_id: str) -> dict:
@@ -193,12 +216,10 @@ async def compute_passport(worker_id: str) -> dict:
     repeat_employers = len([e for e in set(employer_ids) if employer_ids.count(e) > 1])
     total_earned = sum(r.get("amount", 0) for r in records)
     avg_rating = round(sum(r.get("stars", 0) for r in records) / len(records), 1) if records else 0
-    # FIX #2: Only count truly "completed" apps — "hired" means still in progress
     apps = await db.applications.find({"worker_id": worker_id}, {"_id": 0}).to_list(2000)
     hired_apps = [a for a in apps if a["status"] in ("completed", "rejected_by_employer")]
     completed = [a for a in hired_apps if a["status"] == "completed"]
     completion_rate = round(100 * len(completed) / len(hired_apps), 0) if hired_apps else 100
-    # reliability score 0-100
     rel = min(100, int(
         25 * min(1, len(records) / 5) +
         25 * (avg_rating / 5) +
@@ -231,15 +252,14 @@ async def compute_employer_trust(employer_id: str) -> dict:
         "trusted": trusted,
     }
 
-# ====== LIFESPAN (replaces deprecated on_event) ======
-# FIX #16: Use lifespan context manager instead of deprecated @app.on_event
+# ====== LIFESPAN ======
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await seed()
     try:
         os.makedirs("/app/memory", exist_ok=True)
         with open("/app/memory/test_credentials.md", "w") as f:
-            f.write("""# Rozgar Mitra — Test Credentials\n\nAll demo accounts share password: `demo123`\n\n## Workers\n- Username: `raju` / Pwd: `demo123` — Plumber, Delhi/Rohini\n- Username: `suresh` / Pwd: `demo123` — Electrician, Delhi/Dwarka\n\n## Employers\n- Username: `ramesh` / Pwd: `demo123` — Ramesh Construction Pvt Ltd\n- Username: `priya` / Pwd: `demo123` — Sharma Homes\n""")
+            f.write("""# Rozgar Mitra — Test Credentials\n\nAll demo accounts share password: `demo123`\n""")
     except Exception as e:
         logging.warning(f"Could not write test_credentials.md: {e}")
     yield
@@ -384,13 +404,11 @@ async def respond_invite(invite_id: str, action: str, user: dict = Depends(requi
         raise HTTPException(404, "Invite not found")
     if action == "accept":
         await db.invites.update_one({"id": invite_id}, {"$set": {"status": "accepted"}})
-        # Upsert an application record with hired status
         await db.applications.update_one(
             {"job_id": inv["job_id"], "worker_id": user["id"]},
             {"$setOnInsert": {"id": new_id(), "job_id": inv["job_id"], "worker_id": user["id"],
                               "created_at": now_iso()},
              "$set": {"status": "hired"}}, upsert=True)
-        # FIX #4: Only move job to in_progress if all needed workers are now hired
         job = await db.jobs.find_one({"id": inv["job_id"]}, {"_id": 0})
         if job and job["status"] == "open":
             hired_count = await db.applications.count_documents(
@@ -412,7 +430,6 @@ async def active_job(user: dict = Depends(require_worker)):
     if not job:
         return None
     emp = await db.users.find_one({"id": job["employer_id"]}, {"_id": 0, "password_hash": 0})
-    # Co-workers: other hired workers on the same job
     co_apps = await db.applications.find(
         {"job_id": app["job_id"], "status": "hired", "worker_id": {"$ne": user["id"]}},
         {"_id": 0}).to_list(50)
@@ -429,7 +446,6 @@ async def active_job(user: dict = Depends(require_worker)):
 
 @api.post("/worker/upload-photo")
 async def upload_photo(body: PhotoIn, user: dict = Depends(require_worker)):
-    # FIX #12: Enforce photo size limit (~2MB base64)
     if len(body.photo_b64) > PHOTO_MAX_BYTES:
         raise HTTPException(400, "Photo too large. Please upload an image under 1.5 MB.")
     await db.applications.update_one(
@@ -442,7 +458,6 @@ async def mark_complete(body: RateEmployerIn, user: dict = Depends(require_worke
     app = await db.applications.find_one({"job_id": body.job_id, "worker_id": user["id"], "status": "hired"})
     if not app:
         raise HTTPException(404, "No active job")
-    # FIX #13: Require photo upload before marking complete
     if not app.get("photo_b64"):
         raise HTTPException(400, "Please upload a work photo before marking complete.")
     job = await db.jobs.find_one({"id": body.job_id})
@@ -489,6 +504,32 @@ async def my_reviews(user: dict = Depends(require_worker)):
 async def my_passport(user: dict = Depends(require_worker)):
     return await compute_passport(user["id"])
 
+# --- RESTORED: View Employer Profile from Worker Side ---
+@api.get("/worker/employer/{employer_id}/profile")
+async def employer_profile_for_worker(employer_id: str, user: dict = Depends(require_worker)):
+    emp = await db.users.find_one({"id": employer_id, "role": "employer"}, {"_id": 0, "password_hash": 0})
+    if not emp:
+        raise HTTPException(404, "Employer not found")
+    trust = await compute_employer_trust(employer_id)
+    jobs = await db.jobs.find({"employer_id": employer_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    public_jobs = [{"id": j["id"], "title": j["title"], "skill": j["skill"],
+                    "budget": j["budget"], "status": j["status"],
+                    "city": j["city"], "area": j["area"],
+                    "created_at": j.get("created_at")} for j in jobs]
+    revs = await db.employer_reviews.find({"employer_id": employer_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    reviews_out = []
+    for r in revs:
+        w = await db.users.find_one({"id": r["worker_id"]}, {"_id": 0, "password_hash": 0, "name": 1})
+        reviews_out.append({**r, "worker_name": w.get("name") if w else ""})
+    reveal_phone = await worker_can_see_employer_phone(user["id"], employer_id)
+    return {
+        "user": {k: emp[k] for k in ("id", "name", "company", "city", "area") if k in emp},
+        "phone": emp.get("phone") if reveal_phone else None,
+        "stats": trust,
+        "jobs": public_jobs,
+        "reviews": reviews_out,
+    }
+
 @api.post("/worker/availability")
 async def set_availability(body: AvailabilityIn, user: dict = Depends(require_worker)):
     await db.users.update_one({"id": user["id"]}, {"$set": {"available": body.available}})
@@ -519,7 +560,6 @@ async def submit_skill_test(body: SkillTestIn, user: dict = Depends(require_work
         raise HTTPException(404, "No test available for your skill")
     if len(body.answers) != len(questions):
         raise HTTPException(400, "Wrong number of answers")
-    # FIX #14: Enforce 24-hour cooldown between retakes (unless not yet passed)
     last_at = user.get("skill_test_at")
     if last_at and not user.get("skill_test_passed"):
         try:
@@ -531,7 +571,7 @@ async def submit_skill_test(body: SkillTestIn, user: dict = Depends(require_work
         except Exception:
             pass
     correct = sum(1 for i, ans in enumerate(body.answers) if ans == questions[i]["answer"])
-    passed = correct >= 4  # need 4 of 5
+    passed = correct >= 4
     update = {"skill_test_score": correct, "skill_test_passed": passed,
               "skill_test_at": now_iso()}
     await db.users.update_one({"id": user["id"]}, {"$set": update})
@@ -585,12 +625,10 @@ async def decide_applicant(app_id: str, action: str, user: dict = Depends(requir
     if not job or job["employer_id"] != user["id"]:
         raise HTTPException(403, "Not your job")
     if action == "hire":
-        # FIX #5: Re-count inside the same operation to reduce race window
         hired = await db.applications.count_documents({"job_id": app["job_id"], "status": {"$in": ["hired", "completed"]}})
         if hired >= job["workers_needed"]:
             raise HTTPException(400, "All spots filled")
         await db.applications.update_one({"id": app_id}, {"$set": {"status": "hired"}})
-        # Move job to in_progress only when fully staffed
         new_hired = hired + 1
         if new_hired >= job["workers_needed"]:
             await db.jobs.update_one({"id": app["job_id"]}, {"$set": {"status": "in_progress"}})
@@ -598,6 +636,20 @@ async def decide_applicant(app_id: str, action: str, user: dict = Depends(requir
         await db.applications.update_one({"id": app_id}, {"$set": {"status": "rejected_by_employer"}})
     else:
         raise HTTPException(400, "Bad action")
+    return {"ok": True}
+
+# --- RESTORED: Delete Applicant Endpoint ---
+@api.delete("/employer/applicants/{app_id}")
+async def remove_applicant(app_id: str, user: dict = Depends(require_employer)):
+    app = await db.applications.find_one({"id": app_id})
+    if not app:
+        raise HTTPException(404, "Not found")
+    job = await db.jobs.find_one({"id": app["job_id"]})
+    if not job or job["employer_id"] != user["id"]:
+        raise HTTPException(403, "Not your job")
+    if app["status"] != "rejected_by_worker":
+        raise HTTPException(400, "Can only remove offers the worker declined")
+    await db.applications.delete_one({"id": app_id})
     return {"ok": True}
 
 @api.get("/employer/workers")
@@ -634,7 +686,6 @@ async def get_worker_passport(worker_id: str, user: dict = Depends(require_emplo
     psp = await compute_passport(worker_id)
     if not psp:
         raise HTTPException(404, "Worker not found")
-    # FIX #9: Check specifically whether THIS employer has hired this worker
     has_hired = await db.applications.find_one(
         {"worker_id": worker_id, "status": {"$in": ["hired", "completed"]}})
     employer_has_hired = False
@@ -644,6 +695,14 @@ async def get_worker_passport(worker_id: str, user: dict = Depends(require_emplo
     if not employer_has_hired:
         psp["user"]["phone"] = None
     return psp
+
+# --- RESTORED: Get Worker History ---
+@api.get("/employer/worker/{worker_id}/history")
+async def get_worker_history(worker_id: str, user: dict = Depends(require_employer)):
+    w = await db.users.find_one({"id": worker_id, "role": "worker"}, {"_id": 0, "password_hash": 0, "id": 1})
+    if not w:
+        raise HTTPException(404, "Worker not found")
+    return await enrich_worker_history(worker_id)
 
 @api.post("/employer/invite")
 async def send_invite(body: InviteIn, user: dict = Depends(require_employer)):
@@ -682,7 +741,6 @@ async def employer_active(user: dict = Depends(require_employer)):
                        "review_stars": review["stars"] if review else None,
                        "review_text": review["review"] if review else None})
         out.append({**j, "workers": ws})
-    # Only return jobs that have at least one hired/active worker
     return [j for j in out if j["workers"]]
 
 @api.post("/employer/approve-worker")
@@ -698,8 +756,6 @@ async def approve_worker(body: ApproveWorkerIn, user: dict = Depends(require_emp
     await db.applications.update_one(
         {"id": app["id"]},
         {"$set": {"status": "completed", "completed_at": now_iso()}})
-    # FIX #1: approve-worker writes stars=0 placeholder; review-worker updates it later
-    # This is intentional — work record is created here, rating added via review-worker
     rec_exists = await db.work_records.find_one({"job_id": body.job_id, "worker_id": body.worker_id})
     if not rec_exists:
         await db.work_records.insert_one({
@@ -733,7 +789,6 @@ async def review_worker(body: ReviewWorkerIn, user: dict = Depends(require_emplo
         await db.worker_reviews.update_one({"id": existing["id"]}, {"$set": review_doc})
     else:
         await db.worker_reviews.insert_one({"id": new_id(), **review_doc})
-    # Reflect rating on the work record
     await db.work_records.update_one(
         {"job_id": body.job_id, "worker_id": body.worker_id},
         {"$set": {"stars": body.stars}})
@@ -741,7 +796,6 @@ async def review_worker(body: ReviewWorkerIn, user: dict = Depends(require_emplo
 
 @api.post("/employer/complete-worker")
 async def complete_worker(body: CompleteWorkerIn, user: dict = Depends(require_employer)):
-    # Kept for backward compatibility — performs approve + review together.
     job = await db.jobs.find_one({"id": body.job_id, "employer_id": user["id"]})
     if not job:
         raise HTTPException(404, "Job not found")
@@ -791,7 +845,6 @@ async def employer_trust(user: dict = Depends(require_employer)):
 
 # ====== SEED ======
 DEMO_USERS = [
-    # Workers
     {"username": "arjun",  "password": "demo123", "role": "worker",   "name": "Arjun Mehta",
      "phone": "9811001001", "city": "Mumbai", "area": "Andheri",   "skill": "Electrician",
      "experience_years": 7, "aadhaar_verified": True,
@@ -804,7 +857,6 @@ DEMO_USERS = [
      "phone": "9811003003", "city": "Mumbai", "area": "Malad",     "skill": "Painter",
      "experience_years": 2, "aadhaar_verified": False,
      "skill_test_passed": False, "skill_test_score": 2},
-    # Employers
     {"username": "sunita",  "password": "demo123", "role": "employer", "name": "Sunita Kapoor",
      "phone": "9922001001", "city": "Mumbai", "area": "Andheri",  "company": "SunBuild Constructions"},
     {"username": "vikram",  "password": "demo123", "role": "employer", "name": "Vikram Malhotra",
@@ -823,7 +875,6 @@ async def seed():
     except Exception:
         pass
 
-    # ── 1. Create users ───────────────────────────────────────
     for u in DEMO_USERS:
         if await db.users.find_one({"username": u["username"]}):
             continue
@@ -851,23 +902,17 @@ async def seed():
     if not all([arjun, deepak, kavita, sunita, vikram, nandini]):
         return
 
-    # ── 2. Completed history ──────────────────────────────────
-    # Gives workers a rich Work Passport + all 3 employers get Trusted badge (3+ completed, avg >= 4)
     if not await db.work_records.find_one({"worker_id": arjun["id"]}):
         history = [
-            # Arjun x Sunita — 3 jobs (gives Sunita trusted badge)
             {"emp": sunita,  "w": arjun,  "title": "Main Panel Upgrade",        "skill": "Electrician", "budget": 3500, "ws": 5, "wr": "Arjun is brilliant — zero mistakes, works fast.",          "es": 5, "er": "Excellent employer, paid immediately.",     "et": ["fairPayment","onTime"]},
             {"emp": sunita,  "w": arjun,  "title": "Office Wiring Work",         "skill": "Electrician", "budget": 2800, "ws": 5, "wr": "Very professional, cleaned up after work.",                "es": 4, "er": "Safe site, good communication.",            "et": ["safeWorkplace","respectful"]},
             {"emp": sunita,  "w": arjun,  "title": "Generator Connection",       "skill": "Electrician", "budget": 1800, "ws": 4, "wr": "Good work, minor delay but quality was great.",            "es": 5, "er": "Paid on time, very cooperative.",           "et": ["fairPayment","onTime"]},
-            # Deepak x Vikram — 3 jobs (gives Vikram trusted badge)
             {"emp": vikram,  "w": deepak, "title": "Apartment Rewiring",         "skill": "Electrician", "budget": 4200, "ws": 5, "wr": "Deepak handled complex wiring with confidence.",           "es": 5, "er": "Great employer, very respectful.",          "et": ["respectful","fairPayment"]},
             {"emp": vikram,  "w": deepak, "title": "Switchboard Installation",   "skill": "Electrician", "budget": 1200, "ws": 4, "wr": "Neat work, came on time.",                                 "es": 4, "er": "Paid same day, smooth experience.",         "et": ["fairPayment","onTime"]},
             {"emp": vikram,  "w": deepak, "title": "CCTV Power Wiring",          "skill": "Electrician", "budget": 900,  "ws": 5, "wr": "Excellent — understood the job without much explanation.", "es": 5, "er": "Clean site, tools provided.",               "et": ["safeWorkplace","onTime"]},
-            # Arjun x Nandini — 1 job; Deepak x Nandini — 1 job; Kavita x Nandini — 1 job (gives Nandini trusted badge)
             {"emp": nandini, "w": arjun,  "title": "Villa Electrical Inspection","skill": "Electrician", "budget": 2000, "ws": 5, "wr": "Arjun spotted 3 hidden faults. Outstanding.",             "es": 5, "er": "Premium employer, everything organized.",   "et": ["respectful","fairPayment","onTime"]},
             {"emp": nandini, "w": deepak, "title": "Outdoor Light Fitting",      "skill": "Electrician", "budget": 1500, "ws": 4, "wr": "Did well in tight outdoor conditions.",                    "es": 4, "er": "Fair payment, friendly team.",              "et": ["fairPayment","respectful"]},
             {"emp": nandini, "w": kavita, "title": "Living Room Painting",       "skill": "Painter",     "budget": 5500, "ws": 4, "wr": "Kavita's colour sense is excellent.",                      "es": 4, "er": "Gave clear brief, easy to work with.",      "et": ["respectful","onTime"]},
-            # Extra Kavita history x Vikram
             {"emp": vikram,  "w": kavita, "title": "Bedroom Feature Wall",       "skill": "Painter",     "budget": 2200, "ws": 5, "wr": "Perfect finish, zero drips, highly recommend.",           "es": 5, "er": "Paid on time, materials provided.",          "et": ["fairPayment","safeWorkplace"]},
         ]
         job_docs = []
@@ -894,13 +939,11 @@ async def seed():
             {"id": new_id(), "employer_id": x["emp"]["id"], "worker_id": x["w"]["id"],
              "job_id": x["jid"], "stars": x["es"], "tags": x["et"], "review": x["er"], "created_at": now_iso()} for x in history])
 
-    # ── 3. Open jobs for browsing ─────────────────────────────
     open_jobs = [
-        # Electrician jobs
         {"title": "New Flat Full Wiring",        "skill": "Electrician", "emp": sunita,
          "desc": "3BHK flat in Andheri needs complete internal wiring from scratch. 4-day work.",
          "area": "Andheri",  "address": "Wing B, Flat 704, Sunshine Towers, Andheri West",
-         "budget": 8500, "needed": 2},  # multi-worker — covers co-worker feature
+         "budget": 8500, "needed": 2}, 
         {"title": "Office UPS Wiring",           "skill": "Electrician", "emp": vikram,
          "desc": "Wire 3 UPS units to server room and 2 cabins. Tools provided.",
          "area": "Bandra",   "address": "3rd Floor, Commerce House, Bandra Kurla Complex",
@@ -909,7 +952,6 @@ async def seed():
          "desc": "Connect 8 new streetlight poles in residential complex. Safety gear mandatory.",
          "area": "Powai",    "address": "Gate 2, Nandini Residency, Powai",
          "budget": 6000, "needed": 1},
-        # Painter jobs
         {"title": "3BHK Full Exterior Paint",    "skill": "Painter",     "emp": sunita,
          "desc": "Full exterior painting of 3-floor bungalow. Asian Paints Apex to be used.",
          "area": "Juhu",     "address": "Plot 12, Juhu Scheme, Mumbai",
@@ -933,87 +975,51 @@ async def seed():
         await db.jobs.insert_one(doc)
         job_refs[jd["title"]] = doc
 
-    wiring  = job_refs.get("New Flat Full Wiring")       # 2-worker job
+    wiring  = job_refs.get("New Flat Full Wiring") 
     ups     = job_refs.get("Office UPS Wiring")
     street  = job_refs.get("Streetlight Pole Wiring")
     ext     = job_refs.get("3BHK Full Exterior Paint")
     texture = job_refs.get("Interior Wall Texture Work")
 
-    # ── 4. Active jobs (in-progress) ─────────────────────────
-    # Arjun HIRED on "New Flat Full Wiring" (multi-worker — slot 1)
-    # → Arjun sees: Active Job page, employer phone, photo upload, mark complete
     if wiring and not await db.applications.find_one({"job_id": wiring["id"], "worker_id": arjun["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": wiring["id"],
             "worker_id": arjun["id"], "status": "hired", "created_at": now_iso()})
 
-    # Deepak HIRED on "New Flat Full Wiring" (slot 2 — same job as Arjun)
-    # → Deepak sees co-worker Arjun on his Active Job page
     if wiring and not await db.applications.find_one({"job_id": wiring["id"], "worker_id": deepak["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": wiring["id"],
             "worker_id": deepak["id"], "status": "hired", "created_at": now_iso()})
-        # Both hired — job moves to in_progress
         await db.jobs.update_one({"id": wiring["id"]}, {"$set": {"status": "in_progress"}})
 
-    # Kavita HIRED on "Interior Wall Texture Work" (single-worker active job)
-    # → Kavita sees: Active Job page with Nandini's contact
     if texture and not await db.applications.find_one({"job_id": texture["id"], "worker_id": kavita["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": texture["id"],
             "worker_id": kavita["id"], "status": "hired", "created_at": now_iso()})
         await db.jobs.update_one({"id": texture["id"]}, {"$set": {"status": "in_progress"}})
 
-    # ── 5. Pending application ────────────────────────────────
-    # Arjun PENDING on "Office UPS Wiring" (can't be hired — already on wiring job,
-    # but pending shows in Pending Jobs tab)
     if ups and not await db.applications.find_one({"job_id": ups["id"], "worker_id": arjun["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": ups["id"],
             "worker_id": arjun["id"], "status": "pending", "created_at": now_iso()})
 
-    # Kavita PENDING on "3BHK Full Exterior Paint" (her skill matches)
     if ext and not await db.applications.find_one({"job_id": ext["id"], "worker_id": kavita["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": ext["id"],
             "worker_id": kavita["id"], "status": "pending", "created_at": now_iso()})
 
-    # ── 6. Rejected application ───────────────────────────────
-    # Deepak REJECTED from "Streetlight Pole Wiring" (shows rejected card with delete)
     if street and not await db.applications.find_one({"job_id": street["id"], "worker_id": deepak["id"]}):
         await db.applications.insert_one({"id": new_id(), "job_id": street["id"],
             "worker_id": deepak["id"], "status": "rejected_by_employer", "created_at": now_iso()})
 
-    # ── 7. Invite — Vikram invited Arjun to "Office UPS Wiring" ──
-    # → Arjun sees pending invite in Job Requests tab
     if ups and not await db.invites.find_one({"job_id": ups["id"], "worker_id": arjun["id"]}):
         await db.invites.insert_one({"id": new_id(), "job_id": ups["id"],
             "worker_id": arjun["id"], "employer_id": vikram["id"],
             "status": "pending", "created_at": now_iso()})
 
-    # Vikram also invited Deepak to "Office UPS Wiring"
     if ups and not await db.invites.find_one({"job_id": ups["id"], "worker_id": deepak["id"]}):
         await db.invites.insert_one({"id": new_id(), "job_id": ups["id"],
             "worker_id": deepak["id"], "employer_id": vikram["id"],
             "status": "pending", "created_at": now_iso()})
 
-    # ── 8. Urgent mode — Arjun is Available NOW ──────────────
     await db.users.update_one(
         {"id": arjun["id"]},
         {"$set": {"urgent_until": (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()}})
-
-    try:
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write("""# Demo Accounts — All passwords: demo123
-
-Workers:
-  arjun  — Electrician, Mumbai/Andheri  (Aadhaar ✓, Skill Test ✓ 5/5, Urgent NOW)
-  deepak — Electrician, Mumbai/Borivali (Aadhaar ✓, Skill Test ✓ 4/5)
-  kavita — Painter, Mumbai/Malad        (Skill Test ✗ 2/5)
-
-Employers:
-  sunita  — SunBuild Constructions (Trusted ✓)
-  vikram  — Vikram Interiors        (Trusted ✓)
-  nandini — Nandini Residency       (Trusted ✓)
-""")
-    except Exception:
-        pass
 
 app.include_router(api)
 
