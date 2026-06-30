@@ -423,27 +423,48 @@ async def respond_invite(invite_id: str, action: str, user: dict = Depends(requi
 
 @api.get("/worker/active")
 async def active_job(user: dict = Depends(require_worker)):
-    app = await db.applications.find_one({"worker_id": user["id"], "status": "hired"}, {"_id": 0})
-    if not app:
-        return None
-    job = await db.jobs.find_one({"id": app["job_id"]}, {"_id": 0})
-    if not job:
-        return None
-    emp = await db.users.find_one({"id": job["employer_id"]}, {"_id": 0, "password_hash": 0})
-    co_apps = await db.applications.find(
-        {"job_id": app["job_id"], "status": "hired", "worker_id": {"$ne": user["id"]}},
-        {"_id": 0}).to_list(50)
-    co_workers = []
-    for ca in co_apps:
-        w = await db.users.find_one({"id": ca["worker_id"]}, {"_id": 0, "password_hash": 0, "phone": 0})
-        if w:
-            co_workers.append({"id": w["id"], "name": w["name"], "skill": w.get("skill"),
-                                "city": w.get("city"), "aadhaar_verified": w.get("aadhaar_verified", False)})
-    return {"application": app, "job": job,
-            "employer_name": emp.get("name"), "employer_phone": emp.get("phone"),
-            "employer_company": emp.get("company"),
-            "co_workers": co_workers}
+    # Find ALL applications where this worker is hired (status = "hired")
+    apps = await db.applications.find(
+        {"worker_id": user["id"], "status": "hired"},
+        {"_id": 0}
+    ).to_list(500)
 
+    result = []
+    for app in apps:
+        job = await db.jobs.find_one({"id": app["job_id"]}, {"_id": 0})
+        if not job:
+            continue
+        emp = await db.users.find_one(
+            {"id": job["employer_id"]},
+            {"_id": 0, "password_hash": 0}
+        )
+        co_apps = await db.applications.find(
+            {"job_id": app["job_id"], "status": "hired", "worker_id": {"$ne": user["id"]}},
+            {"_id": 0}
+        ).to_list(50)
+
+        co_workers = []
+        for ca in co_apps:
+            w = await db.users.find_one(
+                {"id": ca["worker_id"]},
+                {"_id": 0, "password_hash": 0, "phone": 0}
+            )
+            if w:
+                co_workers.append({
+                    "id": w["id"], "name": w["name"], "skill": w.get("skill"),
+                    "city": w.get("city"), "aadhaar_verified": w.get("aadhaar_verified", False)
+                })
+
+        result.append({
+            "application": app,
+            "job": job,
+            "employer_name": emp.get("name"),
+            "employer_phone": emp.get("phone"),
+            "employer_company": emp.get("company"),
+            "co_workers": co_workers
+        })
+
+    return result   # always an array (empty if no active jobs)
 @api.post("/worker/upload-photo")
 async def upload_photo(body: PhotoIn, user: dict = Depends(require_worker)):
     if len(body.photo_b64) > PHOTO_MAX_BYTES:

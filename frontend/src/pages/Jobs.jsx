@@ -65,7 +65,7 @@ export default function Jobs() {
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not apply");
     }
-  };
+  };  
 
   return (
     <div className="app-shell pb-24">
