@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800;900&family=Work+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #FDFBF7;
+  --surface: #FFFFFF;
+  --primary: #E65C00;
+  --primary-hover: #CC5200;
+  --text: #1A202C;
+  --muted: #4A5568;
+  --border: #E2E8F0;
+  --success: #16A34A;
+  --warning: #EAB308;
+  --danger: #DC2626;
+  --trust: #0EA5E9;
+}
+
+html, body, #root {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Work Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-display { font-family: 'Outfit', sans-serif; }
+
+@layer base {
+  :root {
+    --background: 36 50% 98%;
+    --foreground: 222 22% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 14%;
+    --primary: 22 100% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 17% 96%;
+    --secondary-foreground: 222 22% 14%;
+    --muted: 210 17% 96%;
+    --muted-foreground: 215 14% 35%;
+    --accent: 210 17% 96%;
+    --accent-foreground: 222 22% 14%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 22 100% 45%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* Phone-sized wrapper */
+.app-shell {
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--bg);
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    max-width: 100%;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.15); }
+}
+.pulse-dot { animation: pulse-dot 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.drawer-anim { animation: slide-in-left 0.28s ease-out; }
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-in-up 0.22s ease-out; }
+
+/* Hide scrollbar but allow scroll */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
