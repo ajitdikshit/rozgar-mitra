@@ -208,26 +208,12 @@ async def worker_can_see_employer_phone(worker_id: str, employer_id: str) -> boo
     )
     return inv is not None
 
-def ip_flag(job: dict, app: dict) -> bool:
-    """True if the employer who posted this job and the worker who applied/was
-    hired for it did so from the same IP address — a signal that the same
-    person may be operating both accounts to fabricate work history."""
-    e_ip, w_ip = job.get("employer_ip"), app.get("worker_ip")
-    return bool(e_ip and w_ip and e_ip == w_ip)
-
-
 # ----- Worker passport calc -----
 async def compute_passport(worker_id: str) -> dict:
     user = await db.users.find_one({"id": worker_id}, {"_id": 0, "password_hash": 0})
     if not user:
         return {}
-    all_records = await db.work_records.find({"worker_id": worker_id}, {"_id": 0}).to_list(2000)
-    # Records where the employer and worker posted/applied from the same IP are
-    # excluded from every trust stat below — same-IP activity suggests one
-    # person operating both accounts to fabricate work history, so it
-    # shouldn't be able to inflate a reliability score.
-    flagged = [r for r in all_records if r.get("ip_flagged")]
-    records = [r for r in all_records if not r.get("ip_flagged")]
+    records = await db.work_records.find({"worker_id": worker_id}, {"_id": 0}).to_list(2000)
     employer_ids = [r["employer_id"] for r in records]
     unique_employers = len(set(employer_ids))
     repeat_employers = len([e for e in set(employer_ids) if employer_ids.count(e) > 1])
@@ -253,8 +239,6 @@ async def compute_passport(worker_id: str) -> dict:
         "unique_employers": unique_employers,
         "repeat_employers": repeat_employers,
         "completion_rate": completion_rate,
-        "flagged_count": len(flagged),
-        "flagged_titles": [r["title"] for r in flagged],
     }
 
 async def compute_employer_trust(employer_id: str) -> dict:
@@ -376,7 +360,7 @@ async def list_open_jobs(skill: Optional[str] = None, q: Optional[str] = None,
     return out
 
 @api.post("/worker/apply")
-async def apply_job(body: ApplyIn, request: Request, user: dict = Depends(require_worker)):
+async def apply_job(body: ApplyIn, user: dict = Depends(require_worker)):
     job = await db.jobs.find_one({"id": body.job_id}, {"_id": 0})
     if not job or job["status"] != "open":
         raise HTTPException(400, "Job not open")
@@ -384,7 +368,6 @@ async def apply_job(body: ApplyIn, request: Request, user: dict = Depends(requir
     if existing and existing["status"] in ("pending", "hired"):
         raise HTTPException(400, "Already applied")
     doc = {"id": new_id(), "job_id": body.job_id, "worker_id": user["id"],
-           "worker_ip": get_client_ip(request),
            "status": "pending", "created_at": now_iso()}
     await db.applications.insert_one(doc)
     return {"ok": True}
@@ -429,7 +412,7 @@ async def my_invites(user: dict = Depends(require_worker)):
     return out
 
 @api.post("/worker/invite/{invite_id}/respond")
-async def respond_invite(invite_id: str, action: str, request: Request, user: dict = Depends(require_worker)):
+async def respond_invite(invite_id: str, action: str, user: dict = Depends(require_worker)):
     inv = await db.invites.find_one({"id": invite_id, "worker_id": user["id"]})
     if not inv:
         raise HTTPException(404, "Invite not found")
@@ -439,7 +422,7 @@ async def respond_invite(invite_id: str, action: str, request: Request, user: di
             {"job_id": inv["job_id"], "worker_id": user["id"]},
             {"$setOnInsert": {"id": new_id(), "job_id": inv["job_id"], "worker_id": user["id"],
                               "created_at": now_iso()},
-             "$set": {"status": "hired", "worker_ip": get_client_ip(request)}}, upsert=True)
+             "$set": {"status": "hired"}}, upsert=True)
         job = await db.jobs.find_one({"id": inv["job_id"]}, {"_id": 0})
         if job and job["status"] == "open":
             hired_count = await db.applications.count_documents(
@@ -631,7 +614,7 @@ async def submit_skill_test(body: SkillTestIn, user: dict = Depends(require_work
 
 # ====== EMPLOYER ======
 @api.post("/employer/jobs")
-async def post_job(body: JobIn, request: Request, user: dict = Depends(require_employer)):
+async def post_job(body: JobIn, user: dict = Depends(require_employer)):
     if not body.photo_b64:
         raise HTTPException(400, "Please upload a clear photo of the problem before posting.")
     if len(body.photo_b64) > PHOTO_MAX_BYTES:
@@ -644,7 +627,6 @@ async def post_job(body: JobIn, request: Request, user: dict = Depends(require_e
         "budget": body.budget, "workers_needed": body.workers_needed,
         "deadline": body.deadline,
         "photo_b64": body.photo_b64,
-        "employer_ip": get_client_ip(request),
         "status": "open", "created_at": now_iso(),
     }
     await db.jobs.insert_one(doc)
@@ -820,7 +802,6 @@ async def approve_worker(body: ApproveWorkerIn, user: dict = Depends(require_emp
             "id": new_id(), "worker_id": body.worker_id, "employer_id": user["id"],
             "job_id": body.job_id, "title": job["title"], "skill": job["skill"],
             "amount": job["budget"], "stars": 0,
-            "ip_flagged": ip_flag(job, app),
             "date": now_iso(),
         })
     remaining = await db.applications.count_documents({"job_id": body.job_id, "status": "hired"})
@@ -876,7 +857,6 @@ async def complete_worker(body: CompleteWorkerIn, user: dict = Depends(require_e
             "id": new_id(), "worker_id": body.worker_id, "employer_id": user["id"],
             "job_id": body.job_id, "title": job["title"], "skill": job["skill"],
             "amount": job["budget"], "stars": body.stars,
-            "ip_flagged": ip_flag(job, app),
             "date": now_iso()})
     remaining = await db.applications.count_documents({"job_id": body.job_id, "status": "hired"})
     if remaining == 0:
@@ -1018,38 +998,6 @@ async def seed():
         await db.employer_reviews.insert_many([
             {"id": new_id(), "employer_id": x["emp"]["id"], "worker_id": x["w"]["id"],
              "job_id": x["jid"], "stars": x["es"], "tags": x["et"], "review": x["er"], "created_at": now_iso()} for x in history])
-
-        # ----- Pre-seeded IP-fraud example -----
-        # Deepak's history above (from Vikram/Nandini) is all clean. This one
-        # extra job simulates someone running both the employer and worker
-        # account from the same device — same_ip_flag would catch this live,
-        # but it's seeded directly here so the flag is visible in Deepak's
-        # passport immediately, without anyone having to perform the 6-step
-        # live flow first.
-        fake_shared_ip = "203.0.113.42"  # RFC 5737 documentation IP, not a real address
-        fraud_jid = new_id()
-        await db.jobs.insert_one({
-            "id": fraud_jid, "employer_id": vikram["id"], "title": "Rooftop Solar Panel Wiring",
-            "skill": "Electrician", "description": "Historic completed job.",
-            "city": "Mumbai", "area": vikram["area"], "address": "Seed Address",
-            "budget": 5000, "workers_needed": 1, "deadline": None,
-            "status": "completed", "employer_ip": fake_shared_ip, "created_at": now_iso()})
-        await db.applications.insert_one({
-            "id": new_id(), "job_id": fraud_jid, "worker_id": deepak["id"],
-            "status": "completed", "worker_marked_complete": True,
-            "worker_ip": fake_shared_ip, "created_at": now_iso()})
-        await db.work_records.insert_one({
-            "id": new_id(), "worker_id": deepak["id"], "employer_id": vikram["id"],
-            "job_id": fraud_jid, "title": "Rooftop Solar Panel Wiring", "skill": "Electrician",
-            "amount": 5000, "stars": 5, "ip_flagged": True, "date": now_iso()})
-        await db.worker_reviews.insert_one({
-            "id": new_id(), "worker_id": deepak["id"], "employer_id": vikram["id"],
-            "job_id": fraud_jid, "stars": 5, "review": "Best worker ever, 10/10!!!",
-            "created_at": now_iso()})
-        await db.employer_reviews.insert_one({
-            "id": new_id(), "employer_id": vikram["id"], "worker_id": deepak["id"],
-            "job_id": fraud_jid, "stars": 5, "tags": ["fairPayment", "onTime"],
-            "review": "Amazing employer, paid instantly!!!", "created_at": now_iso()})
 
     open_jobs = [
         {"title": "New Flat Full Wiring",        "skill": "Electrician", "emp": sunita,

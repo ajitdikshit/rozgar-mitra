@@ -1,4 +1,4 @@
-import { Share2, ShieldCheck, BadgeCheck, ShieldAlert } from "lucide-react";
+import { Share2, ShieldCheck, BadgeCheck } from "lucide-react";
 import { StarDisplay } from "./Stars";
 import { useLang } from "../context/LangContext";
 
@@ -54,22 +54,6 @@ export default function PassportCard({ data, showShare = true }) {
         <Stat label={t.repeatEmployers} value={data.repeat_employers}/>
         <Stat label={t.completionRate} value={`${data.completion_rate}%`}/>
       </div>
-
-      {data.flagged_count > 0 && (
-        <div className="mt-3 bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-2 relative"
-             data-testid="ip-flag-warning">
-          <ShieldAlert size={18} className="text-red-600 mt-0.5 shrink-0"/>
-          <div className="text-xs">
-            <p className="font-bold text-red-700">
-              {data.flagged_count} job{data.flagged_count > 1 ? "s" : ""} excluded from this score
-            </p>
-            <p className="text-red-600 mt-0.5">
-              Employer and worker used the same network for: {data.flagged_titles.join(", ")}.
-              These jobs aren't counted toward reliability.
-            </p>
-          </div>
-        </div>
-      )}
 
       {showShare && (
         <button onClick={handleShare} data-testid="whatsapp-share"
