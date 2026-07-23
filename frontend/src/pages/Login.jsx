@@ -4,8 +4,7 @@ import { useLang } from "../context/LangContext";
 import DemoBar from "../components/DemoBar";
 import { useNavigate } from "react-router-dom";
 import { Hammer, Building2 } from "lucide-react";
-
-const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician"];
+import { SKILLS } from "../constants/skills";
 
 export default function Login() {
   const { login, register } = useAuth();
