@@ -11,7 +11,7 @@ import { StarDisplay } from "../components/Stars";
 import { MapPin, IndianRupee, Users, Check, BadgeCheck, Star, Briefcase, TrendingUp, TrendingDown, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
-const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician", "Welder", "Gardener", "Cook", "Security Guard", "Cleaner / Sweeper", "Tailor", "Beautician", "Delivery Boy", "Caretaker / Nurse", "Tutor / Teacher", "Mechanic", "Tiler", "Waterproofing Expert", "Glass / Aluminium Worker", "Lift Technician", "CCTV Technician", "Solar Panel Technician"];
+import { SKILLS } from "../constants/skills";
 
 export default function Jobs() {
   const { t } = useLang();
