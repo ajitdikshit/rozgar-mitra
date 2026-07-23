@@ -8,16 +8,20 @@ import { useLang } from "../context/LangContext";
 import { useAuth } from "../context/AuthContext";
 import { Zap, GraduationCap, BadgeCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { PassportSkeleton } from "../components/Skeletons";
 
 export default function Passport() {
   const { t } = useLang();
   const { user, refreshMe } = useAuth();
   const nav = useNavigate();
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState(false);
   const urgent = user?.urgent_until && new Date(user.urgent_until) > new Date();
 
-  useEffect(() => { api.get("/worker/passport").then(r => setData(r.data)); }, []);
+  useEffect(() => {
+    api.get("/worker/passport").then(r => setData(r.data)).finally(() => setLoading(false));
+  }, []);
 
   const toggleUrgent = async () => {
     await api.post("/worker/urgent", { enable: !urgent });
@@ -29,7 +33,7 @@ export default function Passport() {
       <Navbar title={t.yourPassport} onMenu={() => setDrawer(true)}/>
       <WorkerDrawer open={drawer} onClose={() => setDrawer(false)}/>
       <div className="p-4 space-y-4">
-        <PassportCard data={data}/>
+        {loading ? <PassportSkeleton /> : <PassportCard data={data}/>}
         <button onClick={() => nav("/w/skill-test")} data-testid="skill-test-cta"
                 className={`w-full py-4 font-bold text-lg rounded-xl flex items-center justify-center gap-2 border-2 ${user?.skill_test_passed ? "bg-green-50 border-green-400 text-green-700" : "bg-white border-[#E2E8F0] text-[#1A202C]"}`}>
           {user?.skill_test_passed ? (

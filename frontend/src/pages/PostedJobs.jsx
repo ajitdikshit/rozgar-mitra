@@ -8,6 +8,7 @@ import PassportCard from "../components/PassportCard";
 import { useLang } from "../context/LangContext";
 import { ChevronDown, ChevronUp, Check, X, ShieldCheck, BadgeCheck, FileUser } from "lucide-react";
 import { toast } from "sonner";
+import { ListSkeleton, PassportSkeleton } from "../components/Skeletons";
 
 const STATUS_COLOR = {
   open: "bg-blue-100 text-blue-700",
@@ -22,9 +23,10 @@ export default function PostedJobs() {
   const [drawer, setDrawer] = useState(false);
   const [passport, setPassport] = useState(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // THE FIX: Cache Buster forces live data from MongoDB
-  const load = () => api.get(`/employer/jobs?_t=${Date.now()}`).then(r => setJobs(r.data));
+  const load = () => api.get(`/employer/jobs?_t=${Date.now()}`).then(r => setJobs(r.data)).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const decide = async (id, action) => {
@@ -54,8 +56,9 @@ export default function PostedJobs() {
       <Navbar title={t.myJobs} onMenu={() => setDrawer(true)}/>
       <EmployerDrawer open={drawer} onClose={() => setDrawer(false)}/>
       <div className="p-4 space-y-3">
-        {jobs.length === 0 && <p className="text-center text-[#4A5568] py-10">No jobs posted yet.</p>}
-        {jobs.map(j => {
+        {loading && <ListSkeleton count={3} />}
+        {!loading && jobs.length === 0 && <p className="text-center text-[#4A5568] py-10">No jobs posted yet.</p>}
+        {!loading && jobs.map(j => {
           const isOpen = expanded === j.id;
           const pending = j.applicants.filter(a => a.status === "pending" || a.status === "offer_pending");
           const hired = j.applicants.filter(a => a.status === "hired" || a.status === "completed");
@@ -106,8 +109,8 @@ export default function PostedJobs() {
         })}
       </div>
 
-      <Modal open={!!passport} onClose={() => setPassport(null)} title="Worker Passport">
-        <PassportCard data={passport} showShare={false}/>
+      <Modal open={!!passport || loadingPassport} onClose={() => setPassport(null)} title="Worker Passport">
+        {loadingPassport ? <PassportSkeleton /> : <PassportCard data={passport} showShare={false}/>}
       </Modal>
 
       <BottomNav role="employer"/>

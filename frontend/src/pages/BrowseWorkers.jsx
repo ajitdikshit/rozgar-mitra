@@ -9,6 +9,7 @@ import { useLang } from "../context/LangContext";
 import { ShieldCheck, BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
 import { SKILLS } from "../constants/skills";
+import { ListSkeleton, PassportSkeleton } from "../components/Skeletons";
 
 export default function BrowseWorkers() {
   const { t } = useLang();
@@ -19,19 +20,32 @@ export default function BrowseWorkers() {
   const [passport, setPassport] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [inviting, setInviting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [passportLoading, setPassportLoading] = useState(false);
 
   const load = async () => {
+    setLoading(true);
     const params = {};
     if (skill) params.skill = skill;
     if (q) params.q = q;
-    const { data } = await api.get("/employer/workers", { params });
-    setList(data);
+    try {
+      const { data } = await api.get("/employer/workers", { params });
+      setList(data);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, [skill, q]);
 
   const openPassport = async (w) => {
-    const { data } = await api.get(`/employer/worker/${w.id}/passport`);
-    setPassport(data);
+    setPassportLoading(true);
+    setPassport(null);
+    try {
+      const { data } = await api.get(`/employer/worker/${w.id}/passport`);
+      setPassport(data);
+    } finally {
+      setPassportLoading(false);
+    }
   };
 
   const openInvite = async (worker_id, worker_skill) => {
@@ -68,7 +82,8 @@ export default function BrowseWorkers() {
         </div>
       </div>
       <div className="px-4 space-y-3">
-        {list.map(w => (
+        {loading && <ListSkeleton count={4} />}
+        {!loading && list.map(w => (
           <div key={w.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4" data-testid={`worker-${w.id}`}>
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -97,9 +112,9 @@ export default function BrowseWorkers() {
         ))}
       </div>
 
-      <Modal open={!!passport && !inviting} onClose={() => setPassport(null)} title={t.yourPassport}>
-        <PassportCard data={passport} showShare={false}/>
-        {passport && (
+      <Modal open={(!!passport || passportLoading) && !inviting} onClose={() => setPassport(null)} title={t.yourPassport}>
+        {passportLoading ? <PassportSkeleton /> : <PassportCard data={passport} showShare={false}/>}
+        {passport && !passportLoading && (
           <button onClick={() => openInvite(passport.user.id, passport.user.skill)} data-testid="modal-invite"
                   className="w-full mt-3 py-3 bg-[#E65C00] text-white font-bold rounded-xl">
             {t.sendInvite}

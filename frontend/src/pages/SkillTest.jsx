@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { CheckCircle2, XCircle, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
+import { QuizSkeleton } from "../components/Skeletons";
 
 export default function SkillTest() {
   const nav = useNavigate();
@@ -29,7 +30,17 @@ export default function SkillTest() {
     await refreshMe();
   };
 
-  if (!data) return <div className="p-6 text-center">…</div>;
+  if (!data) {
+    return (
+      <div className="app-shell pb-12 min-h-screen">
+        <Navbar title="Skill Test" onBack={() => nav(-1)}/>
+        <div className="p-4 space-y-4">
+          <QuizSkeleton />
+          <QuizSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell pb-12 min-h-screen">

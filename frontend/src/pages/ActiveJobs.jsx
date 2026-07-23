@@ -8,6 +8,7 @@ import { useLang } from "../context/LangContext";
 import { StarPicker, StarDisplay } from "../components/Stars";
 import { Phone, CheckCircle2, Hourglass, Star } from "lucide-react";
 import { toast } from "sonner";
+import { ListSkeleton } from "../components/Skeletons";
 
 export default function ActiveJobs() {
   const { t } = useLang();
@@ -16,9 +17,10 @@ export default function ActiveJobs() {
   const [review, setReview] = useState(null);
   const [stars, setStars] = useState(5);
   const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // THE FIX: Added Cache Buster so active jobs load instantly!
-  const load = () => api.get(`/employer/active?_t=${Date.now()}`).then(r => setJobs(r.data));
+  const load = () => api.get(`/employer/active?_t=${Date.now()}`).then(r => setJobs(r.data)).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const approve = async (job_id, worker_id, canApprove) => {
@@ -58,8 +60,9 @@ export default function ActiveJobs() {
       <Navbar title={t.activeJobs} onMenu={() => setDrawer(true)}/>
       <EmployerDrawer open={drawer} onClose={() => setDrawer(false)}/>
       <div className="p-4 space-y-3">
-        {jobs.length === 0 && <p className="text-center text-[#4A5568] py-12" data-testid="no-active-emp">{t.noActiveEmp}</p>}
-        {jobs.map(j => (
+        {loading && <ListSkeleton count={3} />}
+        {!loading && jobs.length === 0 && <p className="text-center text-[#4A5568] py-12" data-testid="no-active-emp">{t.noActiveEmp}</p>}
+        {!loading && jobs.map(j => (
           <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4" data-testid={`ej-${j.id}`}>
             <h3 className="font-bold font-display">{j.title}</h3>
             <p className="text-xs text-[#4A5568]">{j.area}, {j.city}</p>

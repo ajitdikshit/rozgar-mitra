@@ -10,6 +10,7 @@ import { TrustedBadge } from "../components/PassportCard";
 import { StarDisplay } from "../components/Stars";
 import { MapPin, IndianRupee, Users, Check, BadgeCheck, Star, Briefcase, TrendingUp, TrendingDown, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { ListSkeleton } from "../components/Skeletons";
 
 import { SKILLS } from "../constants/skills";
 
@@ -27,13 +28,19 @@ export default function Jobs() {
   const [drawer, setDrawer] = useState(false);
   const [badges, setBadges] = useState({ active: 0, pending: 0, invites: 0 });
   const [empModal, setEmpModal] = useState(null); // employer trust info
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
+    setLoading(true);
     const params = {};
     if (skill) params.skill = skill;
     if (q) params.q = q;
-    const { data } = await api.get("/worker/jobs", { params });
-    setJobs(data);
+    try {
+      const { data } = await api.get("/worker/jobs", { params });
+      setJobs(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadBadges = useCallback(async () => {
@@ -88,8 +95,9 @@ export default function Jobs() {
       </div>
 
       <div className="px-4 space-y-3">
-        {jobs.length === 0 && <p className="text-center text-[#4A5568] py-10" data-testid="no-jobs">{t.noJobs}</p>}
-        {jobs.map(j => {
+        {loading && <ListSkeleton count={4} />}
+        {!loading && jobs.length === 0 && <p className="text-center text-[#4A5568] py-10" data-testid="no-jobs">{t.noJobs}</p>}
+        {!loading && jobs.map(j => {
           const left = Math.max(0, j.workers_needed - j.hired_count);
           const pct = Math.min(100, (j.hired_count / j.workers_needed) * 100);
           return (

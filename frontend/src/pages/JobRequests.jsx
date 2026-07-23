@@ -8,12 +8,14 @@ import { Check, X, MailOpen } from "lucide-react";
 import useNotifications from "../hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ListSkeleton } from "../components/Skeletons";
 
 export default function JobRequests() {
   const { t } = useLang();
   const nav = useNavigate();
   const [list, setList] = useState([]);
   const [drawer, setDrawer] = useState(false);
+  const [loading, setLoading] = useState(true);
   const prevIds = useRef(null);
   const { notify } = useNotifications();
   const load = async () => {
@@ -29,6 +31,7 @@ export default function JobRequests() {
     }
     prevIds.current = ids;
     setList(data);
+    setLoading(false);
   };
   useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -54,13 +57,14 @@ export default function JobRequests() {
       <Navbar title={t.invites} onMenu={() => setDrawer(true)}/>
       <WorkerDrawer open={drawer} onClose={() => setDrawer(false)}/>
       <div className="p-4 space-y-3">
-        {visible.length === 0 && (
+        {loading && <ListSkeleton count={2} />}
+        {!loading && visible.length === 0 && (
           <div className="text-center py-12 text-[#4A5568]" data-testid="no-invites">
             <MailOpen size={40} className="mx-auto mb-2 opacity-40"/>
             <p>{t.noInvites}</p>
           </div>
         )}
-        {visible.map(inv => (
+        {!loading && visible.map(inv => (
           <div key={inv.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4" data-testid={`invite-${inv.id}`}>
             <p className="text-xs font-bold uppercase tracking-widest text-[#E65C00]">{t.invitedFor}</p>
             <h3 className="font-bold font-display text-lg">{inv.job?.title}</h3>

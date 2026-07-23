@@ -8,12 +8,14 @@ import { Clock, X, Trash2, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import useNotifications, { diffAndNotify } from "../hooks/useNotifications";
 import { toast } from "sonner";
+import { ListSkeleton } from "../components/Skeletons";
 
 export default function PendingJobs() {
   const { t } = useLang();
   const nav = useNavigate();
   const [apps, setApps] = useState([]);
   const [drawer, setDrawer] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(() => {
     // persist dismissed rejected apps across refreshes
     try { return new Set(JSON.parse(localStorage.getItem("rm_dismissed") || "[]")); }
@@ -37,6 +39,7 @@ export default function PendingJobs() {
     });
     prevRef.current = data;
     setApps(data);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -77,19 +80,20 @@ export default function PendingJobs() {
       <Navbar title={t.pending} onMenu={() => setDrawer(true)}/>
       <WorkerDrawer open={drawer} onClose={() => setDrawer(false)}/>
       <div className="p-4 space-y-3">
-        {visible.length === 0 && (
+        {loading && <ListSkeleton count={3} />}
+        {!loading && visible.length === 0 && (
           <p className="text-center text-[#4A5568] py-12" data-testid="no-pending">
             {t.noPending}
           </p>
         )}
 
         {/* Pending section */}
-        {pendingCount > 0 && (
+        {!loading && pendingCount > 0 && (
           <p className="text-xs font-bold uppercase tracking-widest text-[#4A5568]">
             Waiting for response ({pendingCount})
           </p>
         )}
-        {visible.filter(a => a.status === "pending").map(a => (
+        {!loading && visible.filter(a => a.status === "pending").map(a => (
           <div key={a.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4"
                data-testid={`pending-${a.job_id}`}>
             <div className="flex items-start justify-between gap-2">
@@ -112,12 +116,12 @@ export default function PendingJobs() {
         ))}
 
         {/* Rejected section */}
-        {rejectedCount > 0 && (
+        {!loading && rejectedCount > 0 && (
           <p className="text-xs font-bold uppercase tracking-widest text-red-500 mt-4">
             Not selected ({rejectedCount})
           </p>
         )}
-        {visible.filter(a => a.status === "rejected_by_employer").map(a => (
+        {!loading && visible.filter(a => a.status === "rejected_by_employer").map(a => (
           <div key={a.id} className="bg-red-50 border-2 border-red-200 rounded-2xl p-4"
                data-testid={`rejected-${a.job_id}`}>
             <div className="flex items-start justify-between gap-2">

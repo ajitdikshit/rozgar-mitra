@@ -7,6 +7,7 @@ import { useLang } from "../context/LangContext";
 import { StarPicker } from "../components/Stars";
 import { Phone, Camera, CheckCircle2, Users, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { CardSkeleton } from "../components/Skeletons";
 
 const TAGS_KEYS = ["safeWorkplace", "fairPayment", "onTime", "respectful"];
 
@@ -14,13 +15,15 @@ export default function ActiveJob() {
   const { t } = useLang();
   const [activeJobs, setActiveJobs] = useState([]);  // now an array
   const [drawer, setDrawer] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Load array of active jobs
   const load = () =>
     api
       .get("/worker/active")
       .then((r) => setActiveJobs(r.data || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   useEffect(() => {
     load();
   }, []);
@@ -30,12 +33,13 @@ export default function ActiveJob() {
       <Navbar title={t.active} onMenu={() => setDrawer(true)} />
       <WorkerDrawer open={drawer} onClose={() => setDrawer(false)} />
       <div className="p-4 space-y-6">
-        {activeJobs.length === 0 && (
+        {loading && <CardSkeleton />}
+        {!loading && activeJobs.length === 0 && (
           <p className="text-center text-[#4A5568] py-12" data-testid="no-active">
             {t.noActiveJob}
           </p>
         )}
-        {activeJobs.map((jobData) => (
+        {!loading && activeJobs.map((jobData) => (
           <JobCard key={jobData.application.id} data={jobData} reload={load} />
         ))}
       </div>

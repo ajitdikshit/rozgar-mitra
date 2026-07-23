@@ -5,7 +5,7 @@ import BottomNav from "../components/BottomNav";
 import EmployerDrawer from "../components/EmployerDrawer";
 import { useLang } from "../context/LangContext";
 import { useAuth } from "../context/AuthContext";
-import { CheckCircle2, Sparkles, Camera } from "lucide-react";
+import { CheckCircle2, Sparkles, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SKILLS, DIFFICULTIES } from "../constants/skills";
 
@@ -16,6 +16,7 @@ export default function PostJob() {
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [form, setForm] = useState({
     title: "", skill: "Plumber", description: "",
@@ -36,7 +37,8 @@ export default function PostJob() {
   // Waits for a plausible full city name (not "M", "Mu", stray spaces) before calling.
   useEffect(() => {
     const city = form.city.trim();
-    if (!form.skill || city.length < 3) { setSuggestion(null); return; }
+    if (!form.skill || city.length < 3) { setSuggestion(null); setSuggestionLoading(false); return; }
+    setSuggestionLoading(true);
     const id = setTimeout(async () => {
       try {
         const { data } = await api.get("/wage-intelligence", {
@@ -44,6 +46,7 @@ export default function PostJob() {
         });
         setSuggestion(data);
       } catch { setSuggestion(null); }
+      finally { setSuggestionLoading(false); }
     }, 600);
     return () => clearTimeout(id);
   }, [form.skill, form.city, form.difficulty]);
@@ -126,7 +129,12 @@ export default function PostJob() {
           <Field label={t.budget + " (₹)"} val={form.budget} onChange={v => upd("budget", v)} type="number" tid="post-budget"/>
           <Field label={t.workersNeeded} val={form.workers_needed} onChange={v => upd("workers_needed", v)} type="number" tid="post-workers"/>
         </div>
-        {suggestion && (
+        {suggestionLoading && (
+          <div className="flex items-center gap-2 text-xs text-[#4A5568] px-1" data-testid="wage-suggestion-loading">
+            <Loader2 size={13} className="animate-spin"/> Checking fair market price…
+          </div>
+        )}
+        {!suggestionLoading && suggestion && (
           <div className="bg-[#FFF7ED] border-2 border-[#FED7AA] rounded-xl p-3 flex items-start gap-2" data-testid="wage-suggestion">
             <Sparkles size={16} className="text-[#E65C00] mt-0.5 shrink-0"/>
             <div className="text-sm">
