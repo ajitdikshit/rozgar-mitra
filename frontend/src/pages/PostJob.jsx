@@ -7,8 +7,7 @@ import { useLang } from "../context/LangContext";
 import { useAuth } from "../context/AuthContext";
 import { CheckCircle2, Sparkles, Camera } from "lucide-react";
 import { toast } from "sonner";
-
-const SKILLS = ["Plumber", "Electrician", "Painter", "Mason", "Carpenter", "Driver", "Helper", "AC Technician"];
+import { SKILLS, DIFFICULTIES } from "../constants/skills";
 
 export default function PostJob() {
   const { t } = useLang();
@@ -21,7 +20,7 @@ export default function PostJob() {
   const [form, setForm] = useState({
     title: "", skill: "Plumber", description: "",
     city: user?.city || "", area: user?.area || "", address: "",
-    budget: 500, workers_needed: 1, deadline: ""
+    budget: 500, difficulty: "Medium", workers_needed: 1, deadline: ""
   });
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -33,19 +32,21 @@ export default function PostJob() {
     reader.readAsDataURL(f);
   };
 
-  // Live "AI Wage Intelligence" suggestion — refetches as skill/city change.
+  // Live "AI Wage Intelligence" suggestion — refetches as skill/city/difficulty change.
   // Waits for a plausible full city name (not "M", "Mu", stray spaces) before calling.
   useEffect(() => {
     const city = form.city.trim();
     if (!form.skill || city.length < 3) { setSuggestion(null); return; }
     const id = setTimeout(async () => {
       try {
-        const { data } = await api.get("/wage-intelligence", { params: { skill: form.skill, city } });
+        const { data } = await api.get("/wage-intelligence", {
+          params: { skill: form.skill, city, difficulty: form.difficulty }
+        });
         setSuggestion(data);
       } catch { setSuggestion(null); }
     }, 600);
     return () => clearTimeout(id);
-  }, [form.skill, form.city]);
+  }, [form.skill, form.city, form.difficulty]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -63,7 +64,7 @@ export default function PostJob() {
         photo_b64: photo,
       });
       setDone(true);
-      setForm({ ...form, title: "", description: "", address: "" });
+      setForm({ ...form, title: "", description: "", address: "", difficulty: "Medium" });
       setPhoto(null);
       setTimeout(() => setDone(false), 2500);
     } catch (err) {
@@ -113,6 +114,14 @@ export default function PostJob() {
           <Field label={t.area} val={form.area} onChange={v => upd("area", v)} tid="post-area" required/>
         </div>
         <Field label={t.address} val={form.address} onChange={v => upd("address", v)} tid="post-address" required/>
+        <div>
+          <label className="text-xs font-bold uppercase tracking-widest text-[#4A5568]">Job Difficulty</label>
+          <select value={form.difficulty} onChange={e => upd("difficulty", e.target.value)}
+                  data-testid="post-difficulty"
+                  className="w-full mt-1 px-4 py-3 border-2 border-[#E2E8F0] rounded-xl bg-white">
+            {DIFFICULTIES.map(d => <option key={d}>{d}</option>)}
+          </select>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label={t.budget + " (₹)"} val={form.budget} onChange={v => upd("budget", v)} type="number" tid="post-budget"/>
           <Field label={t.workersNeeded} val={form.workers_needed} onChange={v => upd("workers_needed", v)} type="number" tid="post-workers"/>
@@ -125,8 +134,7 @@ export default function PostJob() {
                 Suggested fair budget: ₹{suggestion.suggested_min} – ₹{suggestion.suggested_max}
               </p>
               <p className="text-xs text-[#9A3412] mt-0.5">
-                Based on {suggestion.city_tier_label} rates for {form.skill}
-                {suggestion.seasonal_note ? ` · ${suggestion.seasonal_note}` : ""}
+                AI estimate for a {form.difficulty.toLowerCase()} {form.skill} job in {form.city}, {suggestion.month}
               </p>
               <button type="button"
                       onClick={() => upd("budget", Math.round((suggestion.suggested_min + suggestion.suggested_max) / 2))}
