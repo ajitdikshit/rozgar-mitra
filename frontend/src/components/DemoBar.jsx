@@ -1,5 +1,6 @@
 import { useAuth } from "../context/AuthContext";
-import { useLang } from "../context/LangContext";
+import { useState } from "react";
+import LanguagePicker, { LanguagePickerButton } from "./LanguagePicker";
 import { useNavigate } from "react-router-dom";
 
 const ACCOUNTS = [
@@ -13,7 +14,7 @@ const ACCOUNTS = [
 
 export default function DemoBar() {
   const { login, user } = useAuth();
-  const { lang, toggle } = useLang();
+  const [langOpen, setLangOpen] = useState(false);
   const nav = useNavigate();
 
   const quick = async (account) => {
@@ -39,10 +40,10 @@ export default function DemoBar() {
           {a.label}
         </button>
       ))}
-      <button onClick={toggle} data-testid="lang-toggle"
-              className="ml-auto text-xs font-bold bg-[#1A202C] text-white px-3 py-1.5 rounded-full whitespace-nowrap shrink-0">
-        {lang === "en" ? "हिं" : "EN"}
-      </button>
+      <div className="ml-auto shrink-0">
+        <LanguagePickerButton onClick={() => setLangOpen(true)} testId="lang-toggle"/>
+      </div>
+      <LanguagePicker open={langOpen} onClose={() => setLangOpen(false)}/>
     </div>
   );
 }
