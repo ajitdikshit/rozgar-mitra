@@ -15,10 +15,20 @@ const api = axios.create({ baseURL: API });
 // scoped to the section that's actually fetching — see
 // src/components/Skeletons.jsx and how pages like Jobs.jsx use it.
 
-// Intercept Requests — just attach the auth token
+// Intercept Requests — attach the auth token, and for GET requests, attach
+// the current UI language so the backend can return already-localized
+// content (job titles/descriptions etc.) without the frontend having to
+// pass `lang` on every single api.get() call individually.
 api.interceptors.request.use((config) => {
   const t = localStorage.getItem("rm_token");
   if (t) config.headers.Authorization = `Bearer ${t}`;
+
+  if ((config.method || "get").toLowerCase() === "get") {
+    const lang = localStorage.getItem("rm_lang");
+    if (lang) {
+      config.params = { lang, ...(config.params || {}) };
+    }
+  }
   return config;
 });
 
