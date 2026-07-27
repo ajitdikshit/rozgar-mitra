@@ -9,6 +9,7 @@ import useNotifications from "../hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ListSkeleton } from "../components/Skeletons";
+import TranslatedBadge, { displayText } from "../components/TranslatedBadge";
 
 export default function JobRequests() {
   const { t } = useLang();
@@ -16,6 +17,12 @@ export default function JobRequests() {
   const [list, setList] = useState([]);
   const [drawer, setDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showingOriginal, setShowingOriginal] = useState(() => new Set());
+  const toggleOriginal = (id) => setShowingOriginal(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const prevIds = useRef(null);
   const { notify } = useNotifications();
   const load = async () => {
@@ -64,12 +71,16 @@ export default function JobRequests() {
             <p>{t.noInvites}</p>
           </div>
         )}
-        {!loading && visible.map(inv => (
+        {!loading && visible.map(inv => {
+          const shown = showingOriginal.has(inv.id);
+          const { title: shownTitle } = displayText(inv.job, shown);
+          return (
           <div key={inv.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4" data-testid={`invite-${inv.id}`}>
             <p className="text-xs font-bold uppercase tracking-widest text-[#E65C00]">{t.invitedFor}</p>
-            <h3 className="font-bold font-display text-lg">{inv.job?.title}</h3>
+            <h3 className="font-bold font-display text-lg">{shownTitle}</h3>
             <p className="text-sm text-[#4A5568]">{inv.job?.area}, {inv.job?.city}</p>
             <p className="text-sm mt-1"><b>₹{inv.job?.budget}</b> • {inv.employer_name}</p>
+            <TranslatedBadge job={inv.job} showingOriginal={shown} onToggle={() => toggleOriginal(inv.id)}/>
             <div className="grid grid-cols-2 gap-2 mt-3">
               <button onClick={() => respond(inv.id, "decline")} data-testid={`decline-${inv.id}`}
                       className="py-2.5 bg-white border-2 border-[#E2E8F0] font-bold rounded-xl flex items-center justify-center gap-1">
@@ -81,7 +92,8 @@ export default function JobRequests() {
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <BottomNav role="worker"/>
     </div>

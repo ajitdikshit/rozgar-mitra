@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { SKILLS, DIFFICULTIES } from "../constants/skills";
 
 export default function PostJob() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { user } = useAuth();
   const [drawer, setDrawer] = useState(false);
   const [done, setDone] = useState(false);
@@ -65,6 +65,7 @@ export default function PostJob() {
         workers_needed: Number(form.workers_needed) || 1,
         deadline: form.deadline || null,
         photo_b64: photo,
+        language: lang,
       });
       setDone(true);
       setForm({ ...form, title: "", description: "", address: "", difficulty: "Medium" });

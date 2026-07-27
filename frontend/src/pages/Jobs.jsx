@@ -11,6 +11,7 @@ import { StarDisplay } from "../components/Stars";
 import { MapPin, IndianRupee, Users, Check, BadgeCheck, Star, Briefcase, TrendingUp, TrendingDown, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ListSkeleton } from "../components/Skeletons";
+import TranslatedBadge, { displayText } from "../components/TranslatedBadge";
 
 import { SKILLS } from "../constants/skills";
 
@@ -29,6 +30,15 @@ export default function Jobs() {
   const [badges, setBadges] = useState({ active: 0, pending: 0, invites: 0 });
   const [empModal, setEmpModal] = useState(null); // employer trust info
   const [loading, setLoading] = useState(true);
+  const [showingOriginal, setShowingOriginal] = useState(() => new Set());
+
+  const toggleOriginal = (jobId) => {
+    setShowingOriginal(prev => {
+      const next = new Set(prev);
+      next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+      return next;
+    });
+  };
 
   const load = async () => {
     setLoading(true);
@@ -100,13 +110,16 @@ export default function Jobs() {
         {!loading && jobs.map(j => {
           const left = Math.max(0, j.workers_needed - j.hired_count);
           const pct = Math.min(100, (j.hired_count / j.workers_needed) * 100);
+          const shown = showingOriginal.has(j.id);
+          const { title: shownTitle, description: shownDescription } = displayText(j, shown);
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4 fade-up"
                  data-testid={`job-${j.id}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold font-display text-base truncate">{j.title}</h3>
+                  <h3 className="font-bold font-display text-base truncate">{shownTitle}</h3>
                   <p className="text-xs text-[#4A5568] flex items-center gap-1"><MapPin size={12}/>{j.area}, {j.city}</p>
+                  <TranslatedBadge job={j} showingOriginal={shown} onToggle={() => toggleOriginal(j.id)}/>
                 </div>
                 <div className="text-right">
                   <p className="font-extrabold text-lg flex items-center"><IndianRupee size={16}/>{j.budget}</p>
@@ -119,7 +132,7 @@ export default function Jobs() {
                   Market range for {j.skill} in {j.city}: ₹{j.pay_suggested_min}–₹{j.pay_suggested_max}
                 </p>
               )}
-              <p className="text-sm mt-2 text-[#4A5568] line-clamp-2">{j.description}</p>
+              <p className="text-sm mt-2 text-[#4A5568] line-clamp-2">{shownDescription}</p>
               {j.photo_b64 && (
                 <img src={j.photo_b64} alt="Problem" data-testid={`job-photo-${j.id}`}
                      className="w-full h-36 object-cover rounded-xl mt-2 border border-[#E2E8F0]"/>

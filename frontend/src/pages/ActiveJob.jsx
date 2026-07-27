@@ -8,6 +8,7 @@ import { StarPicker } from "../components/Stars";
 import { Phone, Camera, CheckCircle2, Users, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { CardSkeleton } from "../components/Skeletons";
+import TranslatedBadge, { displayText } from "../components/TranslatedBadge";
 
 const TAGS_KEYS = ["safeWorkplace", "fairPayment", "onTime", "respectful"];
 
@@ -58,10 +59,12 @@ function JobCard({ data, reload }) {
   const [showRate, setShowRate] = useState(false);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   // Destructure for easier access
   const job = data.job;
   const coWorkers = data.co_workers || [];
+  const { title: shownTitle, description: shownDescription } = displayText(job, showingOriginal);
 
   const uploadPhoto = async (e) => {
     const f = e.target.files[0];
@@ -129,12 +132,14 @@ function JobCard({ data, reload }) {
           {t.activeJobTitle}
         </p>
         <h2 className="text-2xl font-extrabold font-display mt-1">
-          {job.title}
+          {shownTitle}
         </h2>
         <p className="text-sm text-[#4A5568] mt-1">
           {job.area}, {job.city}
         </p>
-        <p className="text-sm mt-2">{job.description}</p>
+        <TranslatedBadge job={job} showingOriginal={showingOriginal}
+                          onToggle={() => setShowingOriginal(v => !v)}/>
+        <p className="text-sm mt-2">{shownDescription}</p>
         <div className="mt-3 pt-3 border-t border-[#E2E8F0]">
           <p className="text-xs font-bold uppercase text-[#4A5568]">
             {t.employerProfile}
