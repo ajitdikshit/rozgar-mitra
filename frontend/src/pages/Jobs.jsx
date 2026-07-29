@@ -171,18 +171,27 @@ const load = async () => {
           const shown = showingOriginal.has(j.id);
           const { title: shownTitle, description: shownDescription } = displayText(j, shown);
       // --- TRAVEL CALCULATION ---
+          // --- TRAVEL CALCULATION ---
           let distance = 0;
           let travelCost = 0;
 
           if (workerLoc && j.area) {
-            const areaKey = j.area.toLowerCase().trim();
-            // Get coordinates from dictionary, or fallback to a 5km offset if area is unknown
-            const jobCoords = AREA_COORDS[areaKey] || { lat: workerLoc.lat + 0.045, lon: workerLoc.lon + 0.045 };
+            let jobCoords;
+
+            // 1. If the employer posted real coordinates, use them!
+            if (j.lat && j.lon) {
+              jobCoords = { lat: j.lat, lon: j.lon };
+            } else {
+              // 2. Otherwise, fall back to the area dictionary (for seeded jobs)
+              const areaKey = j.area.toLowerCase().trim();
+              jobCoords = AREA_COORDS[areaKey] || { lat: workerLoc.lat + 0.045, lon: workerLoc.lon + 0.045 };
+            }
             
             distance = getDistance(workerLoc.lat, workerLoc.lon, jobCoords.lat, jobCoords.lon);
             travelCost = calculateTravelCost(distance);
           }
           const totalPay = j.budget + travelCost;
+          // --------------------------
           // --------------------------
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4 fade-up"
