@@ -15,10 +15,16 @@ import TranslatedBadge, { displayText } from "../components/TranslatedBadge";
 
 import { SKILLS } from "../constants/skills";
 
-export default function Jobs() {
-  const { t } = useLang();
+
+  export default function Jobs() {
+  // 1. Grab 'lang' from the context
+  const { t, lang } = useLang();
   const { user } = useAuth();
-  const [jobs, setJobs] = useState([]);
+  
+  // 2. Split state into a hidden queue and a visible list
+  const [fetchedJobs, setFetchedJobs] = useState([]); 
+  const [jobs, setJobs] = useState([]); 
+  
   const [skill, setSkill] = useState(user?.skill || "");
 
   // Reset skill filter when user account switches
