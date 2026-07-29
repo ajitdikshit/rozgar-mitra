@@ -46,14 +46,19 @@ import { SKILLS } from "../constants/skills";
     });
   };
 
-  const load = async () => {
+const load = async () => {
     setLoading(true);
-    const params = {};
+    setJobs([]); // Clear the screen instantly
+    setFetchedJobs([]); // Clear the hidden queue
+
+    const params = { _t: Date.now() };
     if (skill) params.skill = skill;
     if (q) params.q = q;
+    if (lang) params.lang = lang; // Ask backend for the current language
+
     try {
       const { data } = await api.get("/worker/jobs", { params });
-      setJobs(data);
+      setFetchedJobs(data); // Put backend data in the hidden queue
     } finally {
       setLoading(false);
     }
