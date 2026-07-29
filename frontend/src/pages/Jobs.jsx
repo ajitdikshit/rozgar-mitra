@@ -77,7 +77,18 @@ const load = async () => {
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { load(); }, [skill, q]);
+// Trigger a fresh fetch when the filter, search, OR language changes
+  useEffect(() => { load(); }, [skill, q, lang]);
+
+  // Serial Loading Engine: Push one job from the queue to the screen every 150ms
+  useEffect(() => {
+    if (fetchedJobs.length > 0 && jobs.length < fetchedJobs.length) {
+      const timer = setTimeout(() => {
+        setJobs(prev => [...prev, fetchedJobs[prev.length]]);
+      }, 150); // Adjust this number (in milliseconds) to change the load speed
+      return () => clearTimeout(timer);
+    }
+  }, [fetchedJobs, jobs]);
 
   useEffect(() => {
     loadBadges();
