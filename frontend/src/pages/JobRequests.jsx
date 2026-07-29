@@ -40,7 +40,7 @@ export default function JobRequests() {
     setList(data);
     setLoading(false);
   };
-  useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); const id = setInterval(load, 60000); return () => clearInterval(id); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const respond = async (id, action) => {
