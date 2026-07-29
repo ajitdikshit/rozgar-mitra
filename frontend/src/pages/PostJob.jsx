@@ -18,12 +18,25 @@ export default function PostJob() {
   const [suggestion, setSuggestion] = useState(null);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [photo, setPhoto] = useState(null);
+  const [coords, setCoords] = useState(null); // --- ADDED: Store GPS coordinates ---
+  
   const [form, setForm] = useState({
     title: "", skill: "Plumber", description: "",
     city: user?.city || "", area: user?.area || "", address: "",
     budget: 500, difficulty: "Medium", workers_needed: 1, deadline: ""
   });
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // --- ADDED: Ask employer for location to calculate accurate worker travel pay ---
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        (err) => console.warn("Employer location denied:", err)
+      );
+    }
+  }, []);
+  // ------------------------------------------------------------------------------
 
   const handlePhoto = (e) => {
     const f = e.target.files[0];
@@ -66,6 +79,8 @@ export default function PostJob() {
         deadline: form.deadline || null,
         photo_b64: photo,
         language: lang,
+        lat: coords?.lat || null, // --- ADDED: Send latitude ---
+        lon: coords?.lon || null, // --- ADDED: Send longitude ---
       });
       setDone(true);
       setForm({ ...form, title: "", description: "", address: "", difficulty: "Medium" });
