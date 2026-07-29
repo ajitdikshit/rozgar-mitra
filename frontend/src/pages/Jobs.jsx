@@ -15,7 +15,33 @@ import TranslatedBadge, { displayText } from "../components/TranslatedBadge";
 
 import { SKILLS } from "../constants/skills";
 
+// 1. Mumbai Area Coordinates (Matches your seeded database locations)
+const AREA_COORDS = {
+  "andheri": { lat: 19.1136, lon: 72.8697 },
+  "bandra": { lat: 19.0596, lon: 72.8295 },
+  "powai": { lat: 19.1176, lon: 72.9060 },
+  "juhu": { lat: 19.1075, lon: 72.8263 },
+  "borivali": { lat: 19.2307, lon: 72.8567 },
+  "malad": { lat: 19.1804, lon: 72.8465 }
+};
 
+// 2. Haversine Distance Formula (Calculates exact km between two coordinates)
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of Earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+// 3. Linear Pricing Function (Base Fare + ₹12 per km)
+function calculateTravelCost(distanceInKm) {
+  const BASE_FARE = 20;
+  const RATE_PER_KM = 12;
+  return Math.round(BASE_FARE + (distanceInKm * RATE_PER_KM));
+}
   export default function Jobs() {
   // 1. Grab 'lang' from the context
   const { t, lang } = useLang();
@@ -26,7 +52,17 @@ import { SKILLS } from "../constants/skills";
   const [jobs, setJobs] = useState([]); 
   
   const [skill, setSkill] = useState(user?.skill || "");
+const [workerLoc, setWorkerLoc] = useState(null);
 
+  // Ask the browser for GPS location when the app mounts
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setWorkerLoc({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        (err) => console.warn("Location permission denied:", err)
+      );
+    }
+  }, []);
   // Reset skill filter when user account switches
   useEffect(() => {
     setSkill(user?.skill || "");
@@ -134,6 +170,20 @@ const load = async () => {
           const pct = Math.min(100, (j.hired_count / j.workers_needed) * 100);
           const shown = showingOriginal.has(j.id);
           const { title: shownTitle, description: shownDescription } = displayText(j, shown);
+      // --- TRAVEL CALCULATION ---
+          let distance = 0;
+          let travelCost = 0;
+
+          if (workerLoc && j.area) {
+            const areaKey = j.area.toLowerCase().trim();
+            // Get coordinates from dictionary, or fallback to a 5km offset if area is unknown
+            const jobCoords = AREA_COORDS[areaKey] || { lat: workerLoc.lat + 0.045, lon: workerLoc.lon + 0.045 };
+            
+            distance = getDistance(workerLoc.lat, workerLoc.lon, jobCoords.lat, jobCoords.lon);
+            travelCost = calculateTravelCost(distance);
+          }
+          const totalPay = j.budget + travelCost;
+          // --------------------------
           return (
             <div key={j.id} className="bg-white border-2 border-[#E2E8F0] rounded-2xl p-4 fade-up"
                  data-testid={`job-${j.id}`}>
@@ -143,8 +193,22 @@ const load = async () => {
                   <p className="text-xs text-[#4A5568] flex items-center gap-1"><MapPin size={12}/>{j.area}, {j.city}</p>
                   <TranslatedBadge job={j} showingOriginal={shown} onToggle={() => toggleOriginal(j.id)}/>
                 </div>
-                <div className="text-right">
-                  <p className="font-extrabold text-lg flex items-center"><IndianRupee size={16}/>{j.budget}</p>
+               <div className="text-right">
+                  {travelCost > 0 ? (
+                    <>
+                      <p className="font-extrabold text-lg flex items-center justify-end">
+                        <IndianRupee size={16}/>{totalPay}
+                      </p>
+                      <p className="text-[10px] font-bold text-[#E65C00]">
+                        Includes ₹{travelCost} Travel
+                      </p>
+                      <p className="text-[9px] text-[#4A5568]">({distance.toFixed(1)} km away)</p>
+                    </>
+                  ) : (
+                    <p className="font-extrabold text-lg flex items-center justify-end">
+                      <IndianRupee size={16}/>{j.budget}
+                    </p>
+                  )}
                   {j.employer_trusted && <TrustedBadge/>}
                   {j.pay_verdict && <PayBadge verdict={j.pay_verdict}/>}
                 </div>
