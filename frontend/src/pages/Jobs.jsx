@@ -70,7 +70,7 @@ export default function Jobs() {
 
   useEffect(() => {
     loadBadges();
-    const id = setInterval(loadBadges, 5000);
+    const id = setInterval(loadBadges, 60000);
     return () => clearInterval(id);
   }, [loadBadges]);
 
